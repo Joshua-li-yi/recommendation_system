@@ -6,6 +6,9 @@ import gc
 import pickle
 from tqdm import tqdm
 from sklearn import preprocessing
+import matplotlib.pyplot as plt
+
+
 # 设置pycharm显示宽度和高度
 pd.set_option('display.max_columns', 1000)
 pd.set_option('display.width', 1000)
@@ -201,9 +204,67 @@ def item_data_construction(item_attributes, output_csv=False):
         item_attributes.to_csv(FILE_PATH + 'item_plus.csv')
 
     print('item data construction finish')
+    # item_attributes.reset_index()
     return item_attributes
 
 
+def train_data_to_df(train, item_plus, output_csv=False, input_csv=False):
+    if input_csv is True:
+        item_plus = pd.read_csv(FILE_PATH+'item_plus.csv')
+    item_list = []
+    for item in train.values():
+        for item_id, score in item.items():
+            item_list.append([item_id, score])
+            # item_list = item_list.append([item_id, score])
+    temp_df = pd.DataFrame(data=item_list, columns=['ID', 'score'])
+    print(len(temp_df))
+    # result_df = pd.concat([temp_df, item_plus], axis=1, join='inner',ignore_index=True,keys=['ID'])
+    result_df = pd.merge(temp_df, item_plus, on='ID',how='left')
+
+    print(result_df.head())
+    print(result_df.describe())
+    if output_csv is True:
+        result_df.to_csv(FILE_PATH+'result_df.csv')
+    return result_df
+
+
+def EDA(result_df, input_csv=False):
+    plt.figure(figsize=(16, 9))  #figsize可以设置保存图片的比例
+    if input_csv is True:
+        result_df = pd.read_csv(FILE_PATH + 'result_df.csv')
+    col_list = result_df.columns
+    print(col_list)
+
+    plt.subplot(231)
+    plt.xlabel('atbt1_log')
+    plt.ylabel('score')
+    plt.scatter(y=result_df['score'], x=result_df['atbt1_log'])
+    plt.subplot(232)
+    plt.xlabel('atbt2_log')
+    plt.ylabel('score')
+    plt.scatter(y=result_df['score'], x=result_df['atbt2_log'])
+    plt.subplot(233)
+    plt.xlabel('atbt1_normalized')
+    plt.ylabel('score')
+    plt.scatter(y=result_df['score'], x=result_df['atbt1_normalized'])
+    plt.subplot(234)
+    plt.xlabel('atbt2_normalized')
+    plt.ylabel('score')
+    plt.scatter(y=result_df['score'], x=result_df['atbt2_normalized'])
+    plt.subplot(235)
+    plt.xlabel('atbt1+atbt2')
+    plt.ylabel('score')
+    plt.scatter(y=result_df['score'], x=result_df['atbt1+atbt2'])
+    plt.subplot(236)
+    plt.xlabel('atbt1/atbt2')
+    plt.ylabel('score')
+    plt.scatter(y=result_df['score'], x=result_df['atbt1/atbt2'])
+
+    plt.title('EDA')
+    plt.savefig('img/EDA.png')
+    plt.show()
+
+    return 0
 # 数据划分，将train划分为数据集，验证集，测试集（20%）
 def divide_data(train_data):
     test = train_data.sample(0.2)
@@ -247,7 +308,7 @@ def predict(model1, model2, test_data):
     return 0
 
 
-# 是否已经有数据生成，若已经有数据生成即为True，当第一次执行，或要进行数据修改是改为False
+# 是否已经有数据生成，若已经有数据生成即为False，当第一次执行，或要进行数据修改是改为True
 GENERATE_DATA = False
 
 
@@ -264,15 +325,19 @@ def main():
     else:
         # 平常使用item.csv 数据集 速度更快
         # 注意此时的index会重新生成，并非上次保存的index
-        item = load_item(FILE_PATH + 'itemAttribute.txt', frac=raw_fraction, output_csv=False, input_csv=True)
-
-        item = item_data_clearning(item, already_cleaning=True, output_csv=False)
+        # item = load_item(FILE_PATH + 'itemAttribute.txt', frac=raw_fraction, output_csv=False, input_csv=True)
+        #
+        # item = item_data_clearning(item, already_cleaning=True, output_csv=False)
         # print(item.head())
         # print(item.describe())
-        item =item_data_construction(item, output_csv=True)
+        # item =item_data_construction(item, output_csv=False)
+
         # 平常使用train.pickle 数据集 速度更快
         # train = load_train_data(filepath=FILE_PATH + 'train.txt', frac=raw_fraction, output_pickle=False, input_pickle=True)
+        # result_df = train_data_to_df(train, item,input_csv=False,output_csv=True)
         # print(train[0])
+        result_df = []
+        EDA(result_df, input_csv=True)
     return 0
 
 
