@@ -207,20 +207,21 @@ def item_data_construction(item_attributes, output_csv=False):
     # item_attributes.reset_index()
     return item_attributes
 
-
+# 将dict类型的train数据转为df类型，并于item_plus 合并
 def train_data_to_df(train, item_plus, output_csv=False, input_csv=False):
     if input_csv is True:
         item_plus = pd.read_csv(FILE_PATH+'item_plus.csv')
+    # 将dict类型的train数据转为df类型
     item_list = []
     for item in train.values():
         for item_id, score in item.items():
             item_list.append([item_id, score])
             # item_list = item_list.append([item_id, score])
     temp_df = pd.DataFrame(data=item_list, columns=['ID', 'score'])
-    print(len(temp_df))
+    # print(len(temp_df))
     # result_df = pd.concat([temp_df, item_plus], axis=1, join='inner',ignore_index=True,keys=['ID'])
+    # 左合并
     result_df = pd.merge(temp_df, item_plus, on='ID',how='left')
-
     print(result_df.head())
     print(result_df.describe())
     if output_csv is True:
@@ -228,6 +229,7 @@ def train_data_to_df(train, item_plus, output_csv=False, input_csv=False):
     return result_df
 
 
+# 探索性数据分析（Exploratory Data Analysis ,EDA）
 def EDA(result_df, input_csv=False):
     plt.figure(figsize=(16, 9))  #figsize可以设置保存图片的比例
     if input_csv is True:
@@ -235,6 +237,7 @@ def EDA(result_df, input_csv=False):
     col_list = result_df.columns
     print(col_list)
 
+    # 绘制子图
     plt.subplot(231)
     plt.xlabel('atbt1_log')
     plt.ylabel('score')
@@ -261,6 +264,7 @@ def EDA(result_df, input_csv=False):
     plt.scatter(y=result_df['score'], x=result_df['atbt1/atbt2'])
 
     plt.title('EDA')
+    # 保存图片
     plt.savefig('img/EDA.png')
     plt.show()
 
@@ -327,17 +331,17 @@ def main():
         # 注意此时的index会重新生成，并非上次保存的index
         # item = load_item(FILE_PATH + 'itemAttribute.txt', frac=raw_fraction, output_csv=False, input_csv=True)
         #
-        # item = item_data_clearning(item, already_cleaning=True, output_csv=False)
-        # print(item.head())
-        # print(item.describe())
-        # item =item_data_construction(item, output_csv=False)
+        item = item_data_clearning(item, already_cleaning=True, output_csv=False)
+        print(item.head())
+        print(item.describe())
+        item =item_data_construction(item, output_csv=False)
 
         # 平常使用train.pickle 数据集 速度更快
-        # train = load_train_data(filepath=FILE_PATH + 'train.txt', frac=raw_fraction, output_pickle=False, input_pickle=True)
-        # result_df = train_data_to_df(train, item,input_csv=False,output_csv=True)
+        train = load_train_data(filepath=FILE_PATH + 'train.txt', frac=raw_fraction, output_pickle=False, input_pickle=True)
+        result_df = train_data_to_df(train, item,input_csv=False,output_csv=True)
         # print(train[0])
-        result_df = []
-        EDA(result_df, input_csv=True)
+        # result_df = []
+        EDA(result_df, input_csv=False)
     return 0
 
 
