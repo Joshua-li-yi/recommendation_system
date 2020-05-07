@@ -324,12 +324,16 @@ def main():
         item = item_data_clearning(item, already_cleaning=False, output_csv=True)
         item =item_data_construction(item)
         # 使用train.txt作为测试
-        # train = load_train_data(filepath=FILE_PATH+'train.txt', frac=raw_fraction, output_pickle=True,input_pickle=False)
+        train = load_train_data(filepath=FILE_PATH+'train.txt', frac=raw_fraction, output_pickle=True,input_pickle=False)
         # print(train[0])
+        result_df = train_data_to_df(train, item, input_csv=True, output_csv=False)
+        # print(train[0])
+        # result_df = []
+        EDA(result_df, input_csv=False)
     else:
         # 平常使用item.csv 数据集 速度更快
         # 注意此时的index会重新生成，并非上次保存的index
-        # item = load_item(FILE_PATH + 'itemAttribute.txt', frac=raw_fraction, output_csv=False, input_csv=True)
+        item = load_item(FILE_PATH + 'itemAttribute.txt', frac=raw_fraction, output_csv=False, input_csv=True)
         #
         item = item_data_clearning(item, already_cleaning=True, output_csv=False)
         print(item.head())
