@@ -4,7 +4,8 @@ import pandas as pd
 import gc
 # 打包文件
 import pickle
-
+from tqdm import tqdm
+from sklearn import preprocessing
 # 设置pycharm显示宽度和高度
 pd.set_option('display.max_columns', 1000)
 pd.set_option('display.width', 1000)
@@ -94,47 +95,112 @@ def load_train_data(filepath, output_pickle=False, frac=1., input_pickle=False):
 
 # 数据清洗
 def item_data_clearning(item, output_csv=False, already_cleaning=False):
+    print('begin item data cleaning')
+    print('------------------item data head----------------------')
+    print(item.head())
+    print('------------------item data describe----------------------')
+    print(item.describe())
+    print('------------------item data info ----------------------')
+    print(item.info())
     if already_cleaning is True:
         return item
     else:
-        print('begin item data cleaning')
-        print('------------------item data head----------------------')
-        print(item.head())
-        print('------------------item data describe----------------------')
-        print(item.describe())
-        print('------------------item data info ----------------------')
-        print(item.info())
-        print('item data cleaning finish')
         # none值处理
-
-        # attribute1_avg = item['attribute1'].mean()
-        # item['attribute1'].replace(0, attribute1_avg, inplace=True)
-        # attribute2_avg = item['attribute2'].mean()
-        # item['attribute2'].replace(0, attribute2_avg, inplace=True)
+        # attribute1的平均值
+        attribute1_avg = item['attribute1'].mean()
+        # 将0值即之间的none值替换为均值
+        item['attribute1'].replace(0, attribute1_avg, inplace=True)
+        # attribute2的平均值
+        attribute2_avg = item['attribute2'].mean()
+        # 将0值即之间的none值替换为均值
+        item['attribute2'].replace(0, attribute2_avg, inplace=True)
+        # print(item.head())
 
         # 物品属性缺失处理
-        # ID max = 624960
+        # ID max = 624960+1 从零开始计数的
         # ID rows = 507172
-        # 缺失 624960-507172个，将这些值使用平均值进行填充，
+        # 缺失 624960+1-507172个，将这些值使用平均值进行填充，
+        ID_max = item['ID'].max()
+        print('--------------------ID_max------------------------')
+        print(ID_max)
+        # 实际上应该有的所有ID
+        ID_full_list = set(range(ID_max))
+        print('--------------------ID_full_list------------------------')
+        # print(ID_full_list)
+        # 数据集中给出的ID
+        ID_list = set(item['ID'].tolist())
+        print('--------------------ID_list------------------------')
+        # print(ID_list)
+        # 两者做差集求出缺失的ID
+        ID_null = ID_full_list - ID_list
+        print('--------------------ID_null------------------------')
+        print(len(ID_null))
+        # 将缺失的ID用均值进行填充
+        df_list = []
+        # 显示进度条
+        with tqdm(total=len(ID_null), desc='ID null fill process') as bar:
+            for id_null in ID_null:
+                temp_dict = {'ID': id_null, 'attribute1': attribute1_avg, 'attribute2': attribute2_avg}
+                df_list.append(temp_dict)
+                bar.update(1)
+        # 将list形式转化为df形式
+        temp_df = pd.DataFrame(data=df_list,columns=['ID','attribute1','attribute2'])
+        # 将新生成的df添加到item中
+        item = item.append(temp_df, ignore_index=True)
+        # 安装ID从小到大排序
+        item.sort_values(by=['ID'], ascending=True, inplace=True)
+        # 将ID设置为index
+        item.set_index('ID', inplace=True)
 
         # 重复值处理
+        # 无重复值
+        print("--------------------- item duplication---------------------")
+        print(item[item.duplicated()])
 
         # 输出为csv
         if output_csv is True:
             item.to_csv(FILE_PATH + 'item.csv')
 
+    print('item data cleaning finish')
     return item
 
 
 # 特征工程
 # 特征构建，特征提取，特征选择
-def item_data_construction(item_attributes):
+def item_data_construction(item_attributes, output_csv=False):
+    print('begin item data construction')
+
     item_attributes.set_index('ID', inplace=True)
+    # 主要采取归一化
+    # 归一化(Normalization)
+    item_attributes['atbt1_normalized'] = (item_attributes['attribute1'] - item_attributes['attribute1'].min()) / (item_attributes['attribute1'].max() - item_attributes['attribute1'].min())
+    # 标准化（Standardization）z - score方法规范化(x - mean(x)) / std(x)
+    # item_attributes['atbt1_standard'] = (item_attributes['attribute1'] - item_attributes['attribute1'].mean) / item_attributes['attribute1'].std()
+
+    # 归一化(Normalization)
+    item_attributes['atbt2_normalized'] = (item_attributes['attribute2'] - item_attributes['attribute2'].min()) / (
+                item_attributes['attribute2'].max() - item_attributes['attribute2'].min())
+    # 标准化（Standardization）z - score方法规范化(x - mean(x)) / std(x)
+    # item_attributes['atbt2_standard'] = (item_attributes['attribute1'] - item_attributes['attribute1'].mean) / item_attributes['attribute1'].std()
+
     # 正则化
+    # a1_normalized = preprocessing.normalize(np.array(item_attributes['attribute1']).reshape(-1,1))
+    # a1_normalized = pd.DataFrame(a1_normalized)
+    # item_attributes['attribute1_normalized'] = a1_normalized
 
     # 其他
-    item_attributes['attribute3'] = item_attributes['attribute1'] + item_attributes['attribute2']
+    item_attributes['atbt1+atbt2'] = item_attributes['atbt1_normalized'] + item_attributes['atbt2_normalized']
+    item_attributes['atbt1/atbt2'] = item_attributes['atbt1_normalized'] /item_attributes['atbt2_normalized']
+    item_attributes['atbt1_log'] = np.log(item_attributes['attribute1'])
+    item_attributes['atbt2_log'] = np.log(item_attributes['attribute2'])
 
+    print(item_attributes.head())
+    print(item_attributes.describe())
+
+    if output_csv is True:
+        item_attributes.to_csv(FILE_PATH + 'item_plus.csv')
+
+    print('item data construction finish')
     return item_attributes
 
 
@@ -181,20 +247,32 @@ def predict(model1, model2, test_data):
     return 0
 
 
+# 是否已经有数据生成，若已经有数据生成即为True，当第一次执行，或要进行数据修改是改为False
+GENERATE_DATA = False
+
+
 # 主函数
 def main():
-    # 使用itemAttribute.txt作为测试
-    # item = load_item(FILE_PATH + 'itemAttribute.txt', frac=raw_fraction, output_csv=True, input_csv=False)
-    # 平常使用i tem.csv 数据集 速度更快
-    item = load_item(FILE_PATH + 'itemAttribute.txt', frac=raw_fraction, output_csv=False, input_csv=True)
-    item = item_data_clearning(item,already_cleaning=False)
-    # 使用train.txt作为测试
-    # train = load_train_data(filepath=FILE_PATH+'train.txt', frac=raw_fraction, output_pickle=True,input_pickle=False)
-    # print(train[0])
+    if GENERATE_DATA is True:
+        # 使用itemAttribute.txt作为测试
+        item = load_item(FILE_PATH + 'itemAttribute.txt', frac=raw_fraction, output_csv=True, input_csv=False)
+        item = item_data_clearning(item, already_cleaning=False, output_csv=True)
+        item =item_data_construction(item)
+        # 使用train.txt作为测试
+        # train = load_train_data(filepath=FILE_PATH+'train.txt', frac=raw_fraction, output_pickle=True,input_pickle=False)
+        # print(train[0])
+    else:
+        # 平常使用item.csv 数据集 速度更快
+        # 注意此时的index会重新生成，并非上次保存的index
+        item = load_item(FILE_PATH + 'itemAttribute.txt', frac=raw_fraction, output_csv=False, input_csv=True)
 
-    # 平常使用train.pickle 数据集 速度更快
-    # train = load_train_data(filepath=FILE_PATH + 'train.txt', frac=raw_fraction, output_pickle=False, input_pickle=True)
-    # print(train[0])
+        item = item_data_clearning(item, already_cleaning=True, output_csv=False)
+        # print(item.head())
+        # print(item.describe())
+        item =item_data_construction(item, output_csv=True)
+        # 平常使用train.pickle 数据集 速度更快
+        # train = load_train_data(filepath=FILE_PATH + 'train.txt', frac=raw_fraction, output_pickle=False, input_pickle=True)
+        # print(train[0])
     return 0
 
 
