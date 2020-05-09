@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import time
 # 垃圾回收，内存管理
 import gc
 # 打包文件
@@ -7,7 +8,13 @@ import pickle
 from tqdm import tqdm
 from sklearn import preprocessing
 import matplotlib.pyplot as plt
+from surprise import Dataset, Reader, BaselineOnly, accuracy, SVD
+from surprise.model_selection import cross_validate, KFold, PredefinedKFold, train_test_split
 
+import os
+import warnings
+
+# warnings.filterwarnings('ignore')
 
 # 设置pycharm显示宽度和高度
 pd.set_option('display.max_columns', 1000)
@@ -147,7 +154,7 @@ def item_data_clearning(item, output_csv=False, already_cleaning=False):
                 df_list.append(temp_dict)
                 bar.update(1)
         # 将list形式转化为df形式
-        temp_df = pd.DataFrame(data=df_list,columns=['ID','attribute1','attribute2'])
+        temp_df = pd.DataFrame(data=df_list, columns=['ID', 'attribute1', 'attribute2'])
         # 将新生成的df添加到item中
         item = item.append(temp_df, ignore_index=True)
         # 安装ID从小到大排序
@@ -176,13 +183,14 @@ def item_data_construction(item_attributes, output_csv=False):
     item_attributes.set_index('ID', inplace=True)
     # 主要采取归一化
     # 归一化(Normalization)
-    item_attributes['atbt1_normalized'] = (item_attributes['attribute1'] - item_attributes['attribute1'].min()) / (item_attributes['attribute1'].max() - item_attributes['attribute1'].min())
+    item_attributes['atbt1_normalized'] = (item_attributes['attribute1'] - item_attributes['attribute1'].min()) / (
+            item_attributes['attribute1'].max() - item_attributes['attribute1'].min())
     # 标准化（Standardization）z - score方法规范化(x - mean(x)) / std(x)
     # item_attributes['atbt1_standard'] = (item_attributes['attribute1'] - item_attributes['attribute1'].mean) / item_attributes['attribute1'].std()
 
     # 归一化(Normalization)
     item_attributes['atbt2_normalized'] = (item_attributes['attribute2'] - item_attributes['attribute2'].min()) / (
-                item_attributes['attribute2'].max() - item_attributes['attribute2'].min())
+            item_attributes['attribute2'].max() - item_attributes['attribute2'].min())
     # 标准化（Standardization）z - score方法规范化(x - mean(x)) / std(x)
     # item_attributes['atbt2_standard'] = (item_attributes['attribute1'] - item_attributes['attribute1'].mean) / item_attributes['attribute1'].std()
 
@@ -193,7 +201,7 @@ def item_data_construction(item_attributes, output_csv=False):
 
     # 其他
     item_attributes['atbt1+atbt2'] = item_attributes['atbt1_normalized'] + item_attributes['atbt2_normalized']
-    item_attributes['atbt1/atbt2'] = item_attributes['atbt1_normalized'] /item_attributes['atbt2_normalized']
+    item_attributes['atbt1/atbt2'] = item_attributes['atbt1_normalized'] / item_attributes['atbt2_normalized']
     item_attributes['atbt1_log'] = np.log(item_attributes['attribute1'])
     item_attributes['atbt2_log'] = np.log(item_attributes['attribute2'])
 
@@ -207,31 +215,34 @@ def item_data_construction(item_attributes, output_csv=False):
     # item_attributes.reset_index()
     return item_attributes
 
+
 # 将dict类型的train数据转为df类型，并于item_plus 合并
 def train_data_to_df(train, item_plus, output_csv=False, input_csv=False):
     if input_csv is True:
-        item_plus = pd.read_csv(FILE_PATH+'item_plus.csv')
+        item_plus = pd.read_csv(FILE_PATH + 'item_plus.csv')
     # 将dict类型的train数据转为df类型
     item_list = []
-    for item in train.values():
+    for id, item in train.items():
         for item_id, score in item.items():
-            item_list.append([item_id, score])
+            item_list.append([id, item_id, score])
             # item_list = item_list.append([item_id, score])
-    temp_df = pd.DataFrame(data=item_list, columns=['ID', 'score'])
+    temp_df = pd.DataFrame(data=item_list, columns=['user', 'ID', 'score'])
     # print(len(temp_df))
     # result_df = pd.concat([temp_df, item_plus], axis=1, join='inner',ignore_index=True,keys=['ID'])
     # 左合并
-    result_df = pd.merge(temp_df, item_plus, on='ID',how='left')
+    result_df = pd.merge(temp_df, item_plus, on='ID', how='left')
     print(result_df.head())
     print(result_df.describe())
     if output_csv is True:
-        result_df.to_csv(FILE_PATH+'result_df.csv')
-    return result_df
+        result_df.to_csv(FILE_PATH + 'result_df.csv')
+        temp_df.set_index('user', inplace=True)
+        temp_df.to_csv(FILE_PATH + 'train.csv')
+    return result_df, temp_df
 
 
 # 探索性数据分析（Exploratory Data Analysis ,EDA）
 def EDA(result_df, input_csv=False):
-    plt.figure(figsize=(16, 9))  #figsize可以设置保存图片的比例
+    plt.figure(figsize=(16, 9))  # figsize可以设置保存图片的比例
     if input_csv is True:
         result_df = pd.read_csv(FILE_PATH + 'result_df.csv')
     col_list = result_df.columns
@@ -269,6 +280,8 @@ def EDA(result_df, input_csv=False):
     plt.show()
 
     return 0
+
+
 # 数据划分，将train划分为数据集，验证集，测试集（20%）
 def divide_data(train_data):
     test = train_data.sample(0.2)
@@ -284,6 +297,60 @@ def Zero_model(test):
 
 
 # 基模型
+def user_cf(train, input_csv=False, output_csv=False):
+    print('begin user_cf')
+    user_cf_begin = time.perf_counter()
+    if input_csv is True:
+        # 指定文件所在路径
+        file_path = os.path.expanduser(FILE_PATH + 'train.csv')
+        # 告诉文本阅读器，文本的格式是怎么样的
+        reader = Reader(line_format='user item rating', sep=',', skip_lines=1)
+        # 加载数据
+        train_cf = Dataset.load_from_file(file_path, reader=reader)
+        # train_cf2 = train_cf.build_full_trainset()
+    # trainset, testset = train_test_split(train_cf2, test_size=.25, random_state=20)
+    # algo = SVD()
+    print('svd')
+    # # perf = cross_validate(algo, train_cf, verbose=True, measures=['rmse', 'mae'],cv=3)
+    # perf = cross_validate(algo, train_cf, verbose=True, measures=['rmse', 'mae'],cv=3)
+    # print('perf')
+    # print(perf)
+    # algo = SVD()
+    # pkf = PredefinedKFold()
+    # algo = SVD()
+    #
+    # for trainset, testset in pkf.split(train_cf2):
+    #     # train and test algorithm.
+    #     algo.fit(trainset)
+    #     predictions = algo.test(testset)
+
+        # Compute and print Root Mean Squared Error
+        # accuracy.rmse(predictions, verbose=True)
+
+        # Precision and recall can then be averaged over all users
+    # define a cross-validation iterator
+    kf = KFold(n_splits=3)  # 定义交叉验证迭代器
+    algo = SVD()
+    print('hhhh')
+    for trainset, testset in kf.split(train_cf):
+        # 训练并测试算法
+        print('fit begin')
+        fit_time_begin = time.perf_counter()
+        algo.fit(trainset)
+        fit_time_end = time.perf_counter()
+        print('fit end')
+        print('Running time: %s Seconds' % (fit_time_begin - fit_time_end))
+        print('test begin')
+        test_time_begin = time.perf_counter()
+        predictions = algo.test(testset)
+        test_time_end = time.perf_counter()
+        print('test end')
+        print('Running time: %s Seconds' % (test_time_begin - test_time_end))
+        # 计算并打印RMSE
+        accuracy.rmse(predictions, verbose=True)
+    user_cf_end = time.perf_counter()
+    print('Running time: %s Seconds' % (user_cf_begin - user_cf_end))
+    return 0
 
 # 强模型和弱模型混合
 
@@ -312,7 +379,7 @@ def predict(model1, model2, test_data):
     return 0
 
 
-# 是否已经有数据生成，若已经有数据生成即为False，当第一次执行，或要进行数据修改是改为True
+# 是否已经有数据生成，若已经有数据生成即为False，当第一次执行，或要进行数据修改时改为True
 GENERATE_DATA = False
 
 
@@ -322,9 +389,10 @@ def main():
         # 使用itemAttribute.txt作为测试
         item = load_item(FILE_PATH + 'itemAttribute.txt', frac=raw_fraction, output_csv=True, input_csv=False)
         item = item_data_clearning(item, already_cleaning=False, output_csv=True)
-        item =item_data_construction(item)
+        item = item_data_construction(item)
         # 使用train.txt作为测试
-        train = load_train_data(filepath=FILE_PATH+'train.txt', frac=raw_fraction, output_pickle=True,input_pickle=False)
+        train = load_train_data(filepath=FILE_PATH + 'train.txt', frac=raw_fraction, output_pickle=True,
+                                input_pickle=False)
         # print(train[0])
         result_df = train_data_to_df(train, item, input_csv=True, output_csv=False)
         # print(train[0])
@@ -333,19 +401,22 @@ def main():
     else:
         # 平常使用item.csv 数据集 速度更快
         # 注意此时的index会重新生成，并非上次保存的index
-        item = load_item(FILE_PATH + 'itemAttribute.txt', frac=raw_fraction, output_csv=False, input_csv=True)
+        # item = load_item(FILE_PATH + 'itemAttribute.txt', frac=raw_fraction, output_csv=False, input_csv=True)
         #
-        item = item_data_clearning(item, already_cleaning=True, output_csv=False)
-        print(item.head())
-        print(item.describe())
-        item =item_data_construction(item, output_csv=False)
+        # item = item_data_clearning(item, already_cleaning=True, output_csv=False)
+        # print(item.head())
+        # print(item.describe())
+        # item =item_data_construction(item, output_csv=False)
 
         # 平常使用train.pickle 数据集 速度更快
-        train = load_train_data(filepath=FILE_PATH + 'train.txt', frac=raw_fraction, output_pickle=False, input_pickle=True)
-        result_df = train_data_to_df(train, item,input_csv=False,output_csv=True)
+
+        # train = load_train_data(filepath=FILE_PATH + 'train.txt', frac=raw_fraction, output_pickle=False, input_pickle=True)
+        # result_df, train_df = train_data_to_df(train, item, input_csv=False,output_csv=True)
         # print(train[0])
         # result_df = []
-        EDA(result_df, input_csv=False)
+        # EDA(result_df, input_csv=False)
+        train = []
+        user_cf(train, input_csv=True, output_csv=False)
     return 0
 
 
