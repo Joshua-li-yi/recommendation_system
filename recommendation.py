@@ -338,15 +338,15 @@ def divide_data(train_data, input_csv=False, output_csv=False):
         # 保存为trainset.csv
         trainset_df.to_csv(FILE_PATH+'trainset.csv')
 
-        # 保存trianset为pickle
-        with open(FILE_PATH + 'trainset.pickle', 'wb') as handle:
-            pickle.dump(trainset, handle)
+        # # 保存trianset为pickle
+        # with open(FILE_PATH + 'trainset.pickle', 'wb') as handle:
+        #     pickle.dump(trainset, handle)
 
     print('divide data finish')
 
     # 返回trainset_df df 格式 ，testset df格式
     # trainset Trainset 格式 用于surprise包进行user cf 的处理
-    return trainset_df, testset, trainset
+    return trainset_df, testset
 
 
 # 0模型
@@ -395,55 +395,49 @@ def user_cf(train, input_csv=False, output_csv=False):
     # 从csv中加载数据
     if input_csv is True:
         # 指定文件所在路径
-        file_path = os.path.expanduser(FILE_PATH + 'train.csv')
+        file_path = os.path.expanduser(FILE_PATH + 'trainset.csv')
         # 加载数据
         train_cf = Dataset.load_from_file(file_path, reader=reader)
         # train_cf2 = train_cf.build_full_trainset()
     else:
         # 从已有得df中加载数据
         train_cf = Dataset.load_from_df(train, reader=reader)
-    # trainset, testset = train_test_split(train_cf2, test_size=.25, random_state=20)
-    # algo = SVD()
-    print('svd')
-    # # perf = cross_validate(algo, train_cf, verbose=True, measures=['rmse', 'mae'],cv=3)
+
+
     # perf = cross_validate(algo, train_cf, verbose=True, measures=['rmse', 'mae'],cv=3)
-    # print('perf')
-    # print(perf)
-    # algo = SVD()
-    # pkf = PredefinedKFold()
-    # algo = SVD()
-    #
-    # for trainset, testset in pkf.split(train_cf2):
-    #     # train and test algorithm.
-    #     algo.fit(trainset)
-    #     predictions = algo.test(testset)
 
-        # Compute and print Root Mean Squared Error
-        # accuracy.rmse(predictions, verbose=True)
-
-        # Precision and recall can then be averaged over all users
     # define a cross-validation iterator
     kf = KFold(n_splits=3)  # 定义交叉验证迭代器
+    # define svd
     algo = SVD()
-    print('hhhh')
+    print('------begin train user cf model------------')
     for trainset, testset in kf.split(train_cf):
         # 训练并测试算法
         print('fit begin')
         fit_time_begin = time.perf_counter()
+
         algo.fit(trainset)
+
         fit_time_end = time.perf_counter()
         print('fit end')
-        print('Running time: %s Seconds' % (fit_time_begin - fit_time_end))
+
+        print('Running time: %s Seconds' % (fit_time_end - fit_time_begin))
+
         print('test begin')
         test_time_begin = time.perf_counter()
+
         predictions = algo.test(testset)
+
         test_time_end = time.perf_counter()
         print('test end')
-        print('Running time: %s Seconds' % (test_time_begin - test_time_end))
+        print('Running time: %s Seconds' % (test_time_end - test_time_begin))
+
         # 计算并打印RMSE
         accuracy.rmse(predictions, verbose=True)
+
     user_cf_end = time.perf_counter()
     print('Running time: %s Seconds' % (user_cf_begin - user_cf_end))
+
     return 0
 
 
@@ -454,11 +448,6 @@ def user_cf(train, input_csv=False, output_csv=False):
 # 预测的准确性评估（测试据数据和真实数据之间的差值，RMSE等评估方法）
 def estimate(test, really_data):
     return 0
-
-
-def Zero_model_estimate(model, test):
-
-    return
 
 
 # 评估出来后，保存数据，用以分析，进一步调参
@@ -493,7 +482,10 @@ def main():
         result_df = train_data_to_df(train, item, input_csv=True, output_csv=False)
         # print(train[0])
         # result_df = []
-        EDA(result_df, input_csv=False)
+        # EDA(result_df, input_csv=False)
+
+        trainset_df, testset = divide_data(train, input_csv=False, output_csv=True)
+
     else:
         # 平常使用item.csv 数据集 速度更快
         # 注意此时的index会重新生成，并非上次保存的index
@@ -512,14 +504,16 @@ def main():
         # result_df = []
         # EDA(result_df, input_csv=False)
         train = []
-        # divide_data(train, input_csv=True, output_csv=True)
+        # trainset_df,testset = divide_data(train, input_csv=True, output_csv=True)
         # train = pickle.load(open(FILE_PATH + 'testset.pickle', 'rb'))
         # print(train)
-        # user_cf(train, input_csv=True, output_csv=False)
+
+        trainset_df = []
+        user_cf(trainset_df, input_csv=True, output_csv=False)
 
         # 计算0模型的RMSE，作为一个基准
         test = []
-        zero_model(test, input_csv=True)
+        # zero_model(test, input_csv=True)
     return 0
 
 
