@@ -1,12 +1,14 @@
 import numpy as np
 import pandas as pd
 import time
+from math import sqrt
 # 垃圾回收，内存管理
 import gc
 # 打包文件
 import pickle
 from tqdm import tqdm
 from sklearn import preprocessing
+from sklearn.metrics import mean_squared_error
 import matplotlib.pyplot as plt
 from surprise import Dataset, Reader, BaselineOnly, accuracy, SVD
 from surprise.model_selection import cross_validate, KFold, PredefinedKFold, train_test_split
@@ -348,7 +350,39 @@ def divide_data(train_data, input_csv=False, output_csv=False):
 
 
 # 0模型
-def Zero_model(test):
+def zero_model(testset, input_csv=False):
+    print('zero model begin')
+    if input_csv is True:
+        testset = pd.read_csv(FILE_PATH+'testset.csv')
+
+    # 注意直接使用 test_predict1 = testset为浅拷贝
+    # 使用testset.copy(deep=True) 时为深拷贝
+    # 使用testset.copy(deep=False) 时为浅拷贝，相当于 test_predict1 = testset
+    test_predict1 = testset.copy(deep=True)
+    test_predict2 = testset.copy(deep=True)
+
+    test_predict1['score'] = testset['score'].mean()
+    test_predict2['score'] = 50
+    print('-----------test_predict first detail -----------')
+    print(test_predict1.head())
+    print(test_predict1.describe())
+
+    print('-----------test_predict second detail -----------')
+    print(test_predict2.head())
+    print(test_predict2.describe())
+
+    # 计算两种的rmse
+    # zero_model_rmse1 38.223879691036416
+    # 所得模型的rmse 必须比该值低才有效果
+    zero_model_rmse1 = sqrt(mean_squared_error(testset['score'],test_predict1['score']))
+    # zero_model_rmse2 38.22696157454122
+    zero_model_rmse2 = sqrt(mean_squared_error(testset['score'],test_predict2['score']))
+    print('--------------zero_model_rmse 1----------------')
+    print(zero_model_rmse1)
+
+    print('---------------zero_model_rmse 2----------------')
+    print(zero_model_rmse2)
+    print('zero model finish')
     return 0
 
 
@@ -478,10 +512,14 @@ def main():
         # result_df = []
         # EDA(result_df, input_csv=False)
         train = []
-        divide_data(train, input_csv=True, output_csv=True)
+        # divide_data(train, input_csv=True, output_csv=True)
         # train = pickle.load(open(FILE_PATH + 'testset.pickle', 'rb'))
         # print(train)
         # user_cf(train, input_csv=True, output_csv=False)
+
+        # 计算0模型的RMSE，作为一个基准
+        test = []
+        zero_model(test, input_csv=True)
     return 0
 
 
