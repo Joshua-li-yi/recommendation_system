@@ -454,9 +454,37 @@ def estimate(test, really_data):
 
 # 预测test数据，写入结果文件
 # 加载test文件
+def load_test_data(filepath, output_csv=False):
+    print('begin load test data ')
+    # 打开文件
+    with open(filepath, 'r') as f:
+        test = []
+        while True:
+            line = f.readline()
+            if not line or line == '\n':
+                break
 
-def load_test_data(filepath, frac=1.):
-    return 0
+            id, item_num = line.split('|')
+            # 类型转化
+            id = int(id)
+            item_num = int(item_num)
+
+            # 遍历之后的内容
+            for i in range(item_num):
+                line = f.readline()
+                item_id = line
+                # 数据类型转化
+                item_id = int(item_id)
+                # 放入test中
+                test.append([id, item_id, 0])
+    # 转为df类型
+    test = pd.DataFrame(data=test, columns=['user', 'ID', 'score'])
+    test.set_index('user', inplace=True)
+
+    if output_csv is True:
+        test.to_csv(FILE_PATH+'test.csv')
+    print('load test data finish')
+    return test
 
 
 # 开始预测
@@ -509,11 +537,12 @@ def main():
         # print(train)
 
         trainset_df = []
-        user_cf(trainset_df, input_csv=True, output_csv=False)
+        # user_cf(trainset_df, input_csv=True, output_csv=False)
 
         # 计算0模型的RMSE，作为一个基准
         test = []
         # zero_model(test, input_csv=True)
+        test = load_test_data(FILE_PATH+'test.txt', output_csv=True)
     return 0
 
 
