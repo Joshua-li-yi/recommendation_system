@@ -14,7 +14,7 @@ from surprise.model_selection import cross_validate, KFold, PredefinedKFold, tra
 import os
 import warnings
 
-# warnings.filterwarnings('ignore')
+warnings.filterwarnings('ignore')
 
 # 设置pycharm显示宽度和高度
 pd.set_option('display.max_columns', 1000)
@@ -283,12 +283,68 @@ def EDA(result_df, input_csv=False):
 
 
 # 数据划分，将train划分为数据集，验证集，测试集（20%）
-def divide_data(train_data):
-    test = train_data.sample(0.2)
-    # 不同的调参过程选择不同的划分方式
-    train = train_data
-    verificate = train_data
-    return train, verificate, test
+def divide_data(train_data, input_csv=False, output_csv=False):
+    print('begin divide data')
+    # 告诉文本阅读器，文本的格式是怎么样的
+    reader = Reader(line_format='user item rating', sep=',', skip_lines=1)
+    # 从csv中加载文件
+    if input_csv is True:
+        # 指定文件所在路径
+        file_path = os.path.expanduser(FILE_PATH + 'train.csv')
+        # 加载数据
+        train_cf = Dataset.load_from_file(file_path, reader=reader)
+
+        # 导入train.csv 的训练集 as df
+        # 和上面的格式不同
+        trainset_df = pd.read_csv(FILE_PATH + 'train.csv')
+        # train_cf2 = train_cf.build_full_trainset()
+    else:  # 从以有得df中加载
+        train_cf = Dataset.load_from_df(train_data, reader=reader)
+        trainset_df = train_data
+    # 划分训练集和测试集
+    trainset, testset = train_test_split(train_cf, test_size=.20, random_state=SEED)
+    # testset 转为df格式
+    testset = pd.DataFrame(data=testset, columns=['user', 'ID', 'score'])
+    # 用来求得trainset_df
+    trainset_df = trainset_df.append(testset)
+    # 所有的train数据减去其中的test数据就是所得剩下的trainset（此trainset包含着验证集，也就是说验证集还没有划分）
+    trainset_df = trainset_df.drop_duplicates(subset=['user', 'ID', 'score'], keep=False)
+
+    # 打印相关信息
+    print('-----------trainset_df.head----------')
+    print(trainset_df.head())
+
+    # 此时划分后的user 和 ID 即item_id 为字符串类型的，所以不会进行统计，只出现score一列
+    print('---------trainset_df.describe----------')
+    print(trainset_df.describe())
+
+    print('-----------testset.head---------')
+    print(testset.head())
+    # 此时划分后的user 和 ID 即item_id 为字符串类型的，所以不会进行统计，只出现score一列
+    print('---------testset.describe---------')
+    print(testset.describe())
+
+    # 将训练集和测试集保存下来
+    if output_csv is True:
+
+        # set_index 用于去掉最左边的索引列
+        testset.set_index('user', inplace=True)
+        # 保存testset.csv
+        testset.to_csv(FILE_PATH + 'testset.csv')
+
+        trainset_df.set_index('user', inplace=True)
+        # 保存为trainset.csv
+        trainset_df.to_csv(FILE_PATH+'trainset.csv')
+
+        # 保存trianset为pickle
+        with open(FILE_PATH + 'trainset.pickle', 'wb') as handle:
+            pickle.dump(trainset, handle)
+
+    print('divide data finish')
+
+    # 返回trainset_df df 格式 ，testset df格式
+    # trainset Trainset 格式 用于surprise包进行user cf 的处理
+    return trainset_df, testset, trainset
 
 
 # 0模型
@@ -300,14 +356,18 @@ def Zero_model(test):
 def user_cf(train, input_csv=False, output_csv=False):
     print('begin user_cf')
     user_cf_begin = time.perf_counter()
+    # 告诉文本阅读器，文本的格式是怎么样的
+    reader = Reader(line_format='user item rating', sep=',', skip_lines=1)
+    # 从csv中加载数据
     if input_csv is True:
         # 指定文件所在路径
         file_path = os.path.expanduser(FILE_PATH + 'train.csv')
-        # 告诉文本阅读器，文本的格式是怎么样的
-        reader = Reader(line_format='user item rating', sep=',', skip_lines=1)
         # 加载数据
         train_cf = Dataset.load_from_file(file_path, reader=reader)
         # train_cf2 = train_cf.build_full_trainset()
+    else:
+        # 从已有得df中加载数据
+        train_cf = Dataset.load_from_df(train, reader=reader)
     # trainset, testset = train_test_split(train_cf2, test_size=.25, random_state=20)
     # algo = SVD()
     print('svd')
@@ -352,6 +412,7 @@ def user_cf(train, input_csv=False, output_csv=False):
     print('Running time: %s Seconds' % (user_cf_begin - user_cf_end))
     return 0
 
+
 # 强模型和弱模型混合
 
 # 调参过程
@@ -362,6 +423,7 @@ def estimate(test, really_data):
 
 
 def Zero_model_estimate(model, test):
+
     return
 
 
@@ -416,7 +478,10 @@ def main():
         # result_df = []
         # EDA(result_df, input_csv=False)
         train = []
-        user_cf(train, input_csv=True, output_csv=False)
+        divide_data(train, input_csv=True, output_csv=True)
+        # train = pickle.load(open(FILE_PATH + 'testset.pickle', 'rb'))
+        # print(train)
+        # user_cf(train, input_csv=True, output_csv=False)
     return 0
 
 
