@@ -536,13 +536,14 @@ def main():
         # train = pickle.load(open(FILE_PATH + 'testset.pickle', 'rb'))
         # print(train)
 
-        trainset_df = []
-        # user_cf(trainset_df, input_csv=True, output_csv=False)
-
         # 计算0模型的RMSE，作为一个基准
         test = []
         # zero_model(test, input_csv=True)
-        test = load_test_data(FILE_PATH+'test.txt', output_csv=True)
+        trainset_df = []
+        user_cf(trainset_df, input_csv=True, output_csv=False)
+
+
+        # test = load_test_data(FILE_PATH+'test.txt', output_csv=True)
     return 0
 
 
