@@ -12,7 +12,10 @@ from sklearn.metrics import mean_squared_error
 import matplotlib.pyplot as plt
 from surprise import Dataset, Reader, BaselineOnly, accuracy, SVD
 from surprise.model_selection import cross_validate, KFold, PredefinedKFold, train_test_split
-
+# 随机选择的包
+from numpy.random import choice
+# 向下取整
+from math import floor
 import os
 import warnings
 
@@ -179,74 +182,139 @@ def item_data_clearning(item, output_csv=False, already_cleaning=False):
 
 # 特征工程
 # 特征构建，特征提取，特征选择
-def item_data_construction(item_attributes, output_csv=False):
-    print('begin item data construction')
-
-    item_attributes.set_index('ID', inplace=True)
-    # 主要采取归一化
-    # 归一化(Normalization)
-    item_attributes['atbt1_normalized'] = (item_attributes['attribute1'] - item_attributes['attribute1'].min()) / (
-            item_attributes['attribute1'].max() - item_attributes['attribute1'].min())
-    # 标准化（Standardization）z - score方法规范化(x - mean(x)) / std(x)
-    # item_attributes['atbt1_standard'] = (item_attributes['attribute1'] - item_attributes['attribute1'].mean) / item_attributes['attribute1'].std()
-
-    # 归一化(Normalization)
-    item_attributes['atbt2_normalized'] = (item_attributes['attribute2'] - item_attributes['attribute2'].min()) / (
-            item_attributes['attribute2'].max() - item_attributes['attribute2'].min())
-    # 标准化（Standardization）z - score方法规范化(x - mean(x)) / std(x)
-    # item_attributes['atbt2_standard'] = (item_attributes['attribute1'] - item_attributes['attribute1'].mean) / item_attributes['attribute1'].std()
-
-    # 正则化
-    # a1_normalized = preprocessing.normalize(np.array(item_attributes['attribute1']).reshape(-1,1))
-    # a1_normalized = pd.DataFrame(a1_normalized)
-    # item_attributes['attribute1_normalized'] = a1_normalized
-
-    # 其他
-    item_attributes['atbt1+atbt2'] = item_attributes['atbt1_normalized'] + item_attributes['atbt2_normalized']
-    item_attributes['atbt1/atbt2'] = item_attributes['atbt1_normalized'] / item_attributes['atbt2_normalized']
-    item_attributes['atbt1_log'] = np.log(item_attributes['attribute1'])
-    item_attributes['atbt2_log'] = np.log(item_attributes['attribute2'])
-
-    print(item_attributes.head())
-    print(item_attributes.describe())
-
-    if output_csv is True:
-        item_attributes.to_csv(FILE_PATH + 'item_plus.csv')
-
-    print('item data construction finish')
-    # item_attributes.reset_index()
-    return item_attributes
+# 在jupyter上
+# def item_data_construction(item_attributes, output_csv=False):
+#     print('begin item data construction')
+#
+#     item_attributes.set_index('ID', inplace=True)
+#     # 主要采取归一化
+#     # 归一化(Normalization)
+#     item_attributes['atbt1_normalized'] = (item_attributes['attribute1'] - item_attributes['attribute1'].min()) / (
+#             item_attributes['attribute1'].max() - item_attributes['attribute1'].min())
+#     # 标准化（Standardization）z - score方法规范化(x - mean(x)) / std(x)
+#     # item_attributes['atbt1_standard'] = (item_attributes['attribute1'] - item_attributes['attribute1'].mean) / item_attributes['attribute1'].std()
+#
+#     # 归一化(Normalization)
+#     item_attributes['atbt2_normalized'] = (item_attributes['attribute2'] - item_attributes['attribute2'].min()) / (
+#             item_attributes['attribute2'].max() - item_attributes['attribute2'].min())
+#     # 标准化（Standardization）z - score方法规范化(x - mean(x)) / std(x)
+#     # item_attributes['atbt2_standard'] = (item_attributes['attribute1'] - item_attributes['attribute1'].mean) / item_attributes['attribute1'].std()
+#
+#     # 正则化
+#     # a1_normalized = preprocessing.normalize(np.array(item_attributes['attribute1']).reshape(-1,1))
+#     # a1_normalized = pd.DataFrame(a1_normalized)
+#     # item_attributes['attribute1_normalized'] = a1_normalized
+#
+#     # 其他
+#     item_attributes['atbt1+atbt2'] = item_attributes['atbt1_normalized'] + item_attributes['atbt2_normalized']
+#     item_attributes['atbt1/atbt2'] = item_attributes['atbt1_normalized'] / item_attributes['atbt2_normalized']
+#     item_attributes['atbt1_log'] = np.log(item_attributes['attribute1'])
+#     item_attributes['atbt2_log'] = np.log(item_attributes['attribute2'])
+#
+#     print(item_attributes.head())
+#     print(item_attributes.describe())
+#
+#     if output_csv is True:
+#         item_attributes.to_csv(FILE_PATH + 'item_plus.csv')
+#
+#     print('item data construction finish')
+#     # item_attributes.reset_index()
+#     return item_attributes
 
 
 # 将dict类型的train数据转为df类型，并于item_plus 合并
-def train_data_to_df(train, item_plus, output_csv=False, input_csv=False):
-    if input_csv is True:
+# test_size = 0.2 选取的测试集的比例
+def train_test_divide(train, output_csv=False, input_data=False, test_size=0.2):
+    print('begin divide train and test')
+    if input_data is True:
+        # 导入item_plus
         item_plus = pd.read_csv(FILE_PATH + 'item_plus.csv')
-    # 将dict类型的train数据转为df类型
-    item_list = []
+        # item_plus = pd.read_csv(FILE_PATH + 'item_plus.csv', header=0, names=['Unnamed','user','ID_Power2','attribute2','attribute1','user_Power2','ID','user_Power2_multiply_ID','user_Power2_multiply_user','ID_multiply_ID_Power2'])
+        # 导入所有的数据集
+        train = pickle.load(open(FILE_PATH + 'train.pickle', 'rb'))
+    # print(item_plus.head())
+
+    # 去掉第一列
+    # item_plus.drop(['Unnamed'], axis=1, inplace=True)
+    # print(item_plus.head())
+
+    total_list = []
+    # 存放test的数据
+    testset = []
+    print('begin divide test set')
     for id, item in train.items():
+        # 从一个用户的所用评分中随机选择test_size比例的数据，作为测试集，不重复
+        test_item_list = choice(list(item.keys()), size=floor(test_size * len(item.keys())), replace=False)
+        # test
+        for test_item in test_item_list:
+            testset.append([id, test_item, item[test_item]])
+        # 所有的评分
         for item_id, score in item.items():
-            item_list.append([id, item_id, score])
-            # item_list = item_list.append([item_id, score])
-    temp_df = pd.DataFrame(data=item_list, columns=['user', 'ID', 'score'])
-    # print(len(temp_df))
-    # result_df = pd.concat([temp_df, item_plus], axis=1, join='inner',ignore_index=True,keys=['ID'])
-    # 左合并
-    result_df = pd.merge(temp_df, item_plus, on='ID', how='left')
-    print(result_df.head())
-    print(result_df.describe())
+            total_list.append([id, item_id, score])
+    # 将testset有dict转为df类型
+    test_df = pd.DataFrame(data=testset, columns=['user', 'ID', 'score'])
+    # 删去testset
+    del testset
+    print('--------begin merge test and item plus ------')
+    test_df_plus = pd.merge(test_df, item_plus, on=['user', 'ID'], how='left')
     if output_csv is True:
-        result_df.to_csv(FILE_PATH + 'result_df.csv')
-        temp_df.set_index('user', inplace=True)
-        temp_df.to_csv(FILE_PATH + 'train.csv')
-    return result_df, temp_df
+        print('---------save as csv----------')
+        test_df.set_index('user', inplace=True)
+        test_df.to_csv(FILE_PATH + 'testset.csv')
+        test_df_plus.set_index('user', inplace=True)
+        test_df_plus.to_csv(FILE_PATH + 'testset_plus.csv')
+
+    print('-----------test_df_plus.describe()---------')
+    print(test_df_plus.describe())
+    del test_df_plus
+
+    print('begin divide traint set')
+    # 选区total中有的但是测试集中没有的数据作为训练集
+    # trainset = [i for i in total_list if i not in testset]
+    # 将dict类型数据转为df类型
+    total_df = pd.DataFrame(data=total_list, columns=['user', 'ID', 'score'])
+    # 删去total list
+    del total_list
+    # 先扩展再去重，得到trian
+    train_df = total_df.append(test_df)
+    # 所有的train数据减去重复的就是所得剩下的train（此train包含着验证集，也就是说验证集还没有划分）
+    train_df = train_df.drop_duplicates(subset=['user', 'ID', 'score'], keep=False)
+
+    if output_csv is True:
+        print('---------save as csv----------')
+        total_df.set_index('user', inplace=True)
+        total_df.to_csv(FILE_PATH + 'train.csv')
+    del total_df
+
+    print('--------begin merge train and item plus ------')
+    train_df_plus = pd.merge(train_df, item_plus, on=['user', 'ID'], how='left')
+    if output_csv is True:
+        print('---------save as csv----------')
+
+        train_df.set_index('user', inplace=True)
+        train_df.to_csv(FILE_PATH + 'trainset.csv')
+        train_df_plus.set_index('user', inplace=True)
+        train_df_plus.to_csv(FILE_PATH + 'trainset_plus.csv')
+    del train_df
+
+    print('------------train_df_plus.describe()------------')
+    print(train_df_plus.describe())
+    del train_df_plus
+    # 保存item plus
+    # if output_csv is True:
+        # print('---------save as csv----------')
+
+        # item_plus.set_index('user', inplace=True)
+        # item_plus.to_csv(FILE_PATH+'item_plus.csv')
+    print('divide train and test end ')
+    return 0
 
 
 # 探索性数据分析（Exploratory Data Analysis ,EDA）
 def EDA(result_df, input_csv=False):
     plt.figure(figsize=(16, 9))  # figsize可以设置保存图片的比例
     if input_csv is True:
-        result_df = pd.read_csv(FILE_PATH + 'result_df.csv')
+        result_df = pd.read_csv(FILE_PATH + 'trainset_plus.csv')
     col_list = result_df.columns
     print(col_list)
 
@@ -284,69 +352,71 @@ def EDA(result_df, input_csv=False):
     return 0
 
 
-# 数据划分，将train划分为数据集，验证集，测试集（20%）
-def divide_data(train_data, input_csv=False, output_csv=False):
-    print('begin divide data')
-    # 告诉文本阅读器，文本的格式是怎么样的
-    reader = Reader(line_format='user item rating', sep=',', skip_lines=1)
-    # 从csv中加载文件
-    if input_csv is True:
-        # 指定文件所在路径
-        file_path = os.path.expanduser(FILE_PATH + 'train.csv')
-        # 加载数据
-        train_cf = Dataset.load_from_file(file_path, reader=reader)
-
-        # 导入train.csv 的训练集 as df
-        # 和上面的格式不同
-        trainset_df = pd.read_csv(FILE_PATH + 'train.csv')
-        # train_cf2 = train_cf.build_full_trainset()
-    else:  # 从以有得df中加载
-        train_cf = Dataset.load_from_df(train_data, reader=reader)
-        trainset_df = train_data
-    # 划分训练集和测试集
-    trainset, testset = train_test_split(train_cf, test_size=.20, random_state=SEED)
-    # testset 转为df格式
-    testset = pd.DataFrame(data=testset, columns=['user', 'ID', 'score'])
-    # 用来求得trainset_df
-    trainset_df = trainset_df.append(testset)
-    # 所有的train数据减去其中的test数据就是所得剩下的trainset（此trainset包含着验证集，也就是说验证集还没有划分）
-    trainset_df = trainset_df.drop_duplicates(subset=['user', 'ID', 'score'], keep=False)
-
-    # 打印相关信息
-    print('-----------trainset_df.head----------')
-    print(trainset_df.head())
-
-    # 此时划分后的user 和 ID 即item_id 为字符串类型的，所以不会进行统计，只出现score一列
-    print('---------trainset_df.describe----------')
-    print(trainset_df.describe())
-
-    print('-----------testset.head---------')
-    print(testset.head())
-    # 此时划分后的user 和 ID 即item_id 为字符串类型的，所以不会进行统计，只出现score一列
-    print('---------testset.describe---------')
-    print(testset.describe())
-
-    # 将训练集和测试集保存下来
-    if output_csv is True:
-
-        # set_index 用于去掉最左边的索引列
-        testset.set_index('user', inplace=True)
-        # 保存testset.csv
-        testset.to_csv(FILE_PATH + 'testset.csv')
-
-        trainset_df.set_index('user', inplace=True)
-        # 保存为trainset.csv
-        trainset_df.to_csv(FILE_PATH+'trainset.csv')
-
-        # # 保存trianset为pickle
-        # with open(FILE_PATH + 'trainset.pickle', 'wb') as handle:
-        #     pickle.dump(trainset, handle)
-
-    print('divide data finish')
-
-    # 返回trainset_df df 格式 ，testset df格式
-    # trainset Trainset 格式 用于surprise包进行user cf 的处理
-    return trainset_df, testset
+# # 数据划分，将train划分为数据集，验证集，测试集（20%）
+# def divide_data(train_data, input_csv=False, output_csv=False):
+#     print('begin divide data')
+#     # 告诉文本阅读器，文本的格式是怎么样的
+#     reader = Reader(line_format='user item rating', sep=',', skip_lines=1)
+#     # 从csv中加载文件
+#     if input_csv is True:
+#         # 指定文件所在路径
+#         # file_path = os.path.expanduser(FILE_PATH + 'train.csv')
+#         # 加载数据
+#         # train_cf = Dataset.load_from_file(file_path, reader=reader)
+#
+#         # 导入train.csv 的训练集 as df
+#         # 和上面的格式不同
+#         trainset_df = pd.read_csv(FILE_PATH + 'train.csv')
+#         # train_cf2 = train_cf.build_full_trainset()
+#     else:  # 从以有得df中加载
+#         train_cf = Dataset.load_from_df(train_data, reader=reader)
+#         trainset_df = train_data
+#
+#
+#     # # 划分训练集和测试集
+#     # trainset, testset = train_test_split(train_cf, test_size=.20, random_state=SEED)
+#     # # testset 转为df格式
+#     # testset = pd.DataFrame(data=testset, columns=['user', 'ID', 'score'])
+#     # # 用来求得trainset_df
+#     # trainset_df = trainset_df.append(testset)
+#     # # 所有的train数据减去其中的test数据就是所得剩下的trainset（此trainset包含着验证集，也就是说验证集还没有划分）
+#     # trainset_df = trainset_df.drop_duplicates(subset=['user', 'ID', 'score'], keep=False)
+#
+#     # 打印相关信息
+#     print('-----------trainset_df.head----------')
+#     print(trainset_df.head())
+#
+#     # 此时划分后的user 和 ID 即item_id 为字符串类型的，所以不会进行统计，只出现score一列
+#     print('---------trainset_df.describe----------')
+#     print(trainset_df.describe())
+#
+#     print('-----------testset.head---------')
+#     # print(testset.head())
+#     # 此时划分后的user 和 ID 即item_id 为字符串类型的，所以不会进行统计，只出现score一列
+#     print('---------testset.describe---------')
+#     # print(testset.describe())
+#
+#     # 将训练集和测试集保存下来
+#     if output_csv is True:
+#
+#         # set_index 用于去掉最左边的索引列
+#         testset.set_index('user', inplace=True)
+#         # 保存testset.csv
+#         testset.to_csv(FILE_PATH + 'testset.csv')
+#
+#         trainset_df.set_index('user', inplace=True)
+#         # 保存为trainset.csv
+#         trainset_df.to_csv(FILE_PATH+'trainset.csv')
+#
+#         # # 保存trianset为pickle
+#         # with open(FILE_PATH + 'trainset.pickle', 'wb') as handle:
+#         #     pickle.dump(trainset, handle)
+#
+#     print('divide data finish')
+#
+#     # 返回trainset_df df 格式 ，testset df格式
+#     # trainset Trainset 格式 用于surprise包进行user cf 的处理
+#     return trainset_df, testset
 
 
 # 0模型
@@ -502,17 +572,17 @@ def main():
         # 使用itemAttribute.txt作为测试
         item = load_item(FILE_PATH + 'itemAttribute.txt', frac=raw_fraction, output_csv=True, input_csv=False)
         item = item_data_clearning(item, already_cleaning=False, output_csv=True)
-        item = item_data_construction(item)
+        # item = item_data_construction(item)
         # 使用train.txt作为测试
         train = load_train_data(filepath=FILE_PATH + 'train.txt', frac=raw_fraction, output_pickle=True,
                                 input_pickle=False)
         # print(train[0])
-        result_df = train_data_to_df(train, item, input_csv=True, output_csv=False)
+
         # print(train[0])
         # result_df = []
         # EDA(result_df, input_csv=False)
+        train_test_divide(train, input_data=True, output_csv=True, test_size=0.2)
 
-        trainset_df, testset = divide_data(train, input_csv=False, output_csv=True)
 
     else:
         # 平常使用item.csv 数据集 速度更快
@@ -532,15 +602,15 @@ def main():
         # result_df = []
         # EDA(result_df, input_csv=False)
         train = []
-        # trainset_df,testset = divide_data(train, input_csv=True, output_csv=True)
+        train_test_divide(train, input_data=True, output_csv=True,test_size=0.2)
         # train = pickle.load(open(FILE_PATH + 'testset.pickle', 'rb'))
         # print(train)
 
         # 计算0模型的RMSE，作为一个基准
         test = []
         # zero_model(test, input_csv=True)
-        trainset_df = []
-        user_cf(trainset_df, input_csv=True, output_csv=False)
+        # trainset_df = []
+        # user_cf(trainset_df, input_csv=True, output_csv=False)
 
 
         # test = load_test_data(FILE_PATH+'test.txt', output_csv=True)
