@@ -224,6 +224,7 @@ def item_data_clearning(item, output_csv=False, already_cleaning=False):
 #     return item_attributes
 
 
+
 # 将dict类型的train数据转为df类型，并于item_plus 合并
 # test_size = 0.2 选取的测试集的比例
 def train_test_divide(train, output_csv=False, input_data=False, test_size=0.2):
