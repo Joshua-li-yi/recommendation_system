@@ -96,7 +96,9 @@ def load_train_data(filepath, output_pickle=False, frac=1., input_pickle=False):
                     # 放入字典中
                     item[item_id] = score
                 # 字典嵌套
+                print(item)
                 train[id] = item
+
     # print(train)
 
     # 使用dump()将数据序列化到文件中
@@ -255,18 +257,6 @@ def train_test_divide(train, output_csv=False, input_data=False, test_size=0.2):
     test_df = pd.DataFrame(data=testset, columns=['user', 'ID', 'score'])
     # 删去testset
     del testset
-    print('--------begin merge test and item plus ------')
-    test_df_plus = pd.merge(test_df, item_plus, on=['user', 'ID'], how='left')
-    if output_csv is True:
-        print('---------save as csv----------')
-        test_df.set_index('user', inplace=True)
-        test_df.to_csv(FILE_PATH + 'testset.csv')
-        test_df_plus.set_index('user', inplace=True)
-        test_df_plus.to_csv(FILE_PATH + 'testset_plus.csv')
-
-    print('-----------test_df_plus.describe()---------')
-    print(test_df_plus.describe())
-    del test_df_plus
 
     print('begin divide traint set')
     # 选区total中有的但是测试集中没有的数据作为训练集
@@ -275,10 +265,26 @@ def train_test_divide(train, output_csv=False, input_data=False, test_size=0.2):
     total_df = pd.DataFrame(data=total_list, columns=['user', 'ID', 'score'])
     # 删去total list
     del total_list
+
     # 先扩展再去重，得到trian
     train_df = total_df.append(test_df)
+    train_df['user'] = train_df['user'].astype(int)
     # 所有的train数据减去重复的就是所得剩下的train（此train包含着验证集，也就是说验证集还没有划分）
-    train_df = train_df.drop_duplicates(subset=['user', 'ID', 'score'], keep=False)
+    train_df.drop_duplicates(subset=['user', 'ID', 'score'], keep=False, inplace=True)
+    print('--------begin merge test and item plus ------')
+    test_df_plus = pd.merge(test_df, item_plus, on=['user', 'ID'], how='left')
+
+    print('-----------test_df_plus.describe()---------')
+    print(test_df_plus.describe())
+
+    if output_csv is True:
+        print('---------save as csv----------')
+        test_df.set_index('user', inplace=True)
+        test_df.to_csv(FILE_PATH + 'testset.csv')
+        test_df_plus.set_index('user', inplace=True)
+        test_df_plus.to_csv(FILE_PATH + 'testset_plus.csv')
+
+    del test_df_plus
 
     if output_csv is True:
         print('---------save as csv----------')
@@ -461,7 +467,7 @@ def user_cf(train, input_csv=False, output_csv=False):
     print('begin user_cf')
     user_cf_begin = time.perf_counter()
     # 告诉文本阅读器，文本的格式是怎么样的
-    reader = Reader(line_format='user item rating', sep=',', skip_lines=1)
+    reader = Reader(line_format='user item rating', sep=',', skip_lines=1,rating_scale=(0,100))
     # 从csv中加载数据
     if input_csv is True:
         # 指定文件所在路径
@@ -601,16 +607,16 @@ def main():
         # print(train[0])
         # result_df = []
         # EDA(result_df, input_csv=False)
-        train = []
-        train_test_divide(train, input_data=True, output_csv=True,test_size=0.2)
+        # train = []
+        # train_test_divide(train, input_data=True, output_csv=True,test_size=0.2)
         # train = pickle.load(open(FILE_PATH + 'testset.pickle', 'rb'))
         # print(train)
 
         # 计算0模型的RMSE，作为一个基准
         test = []
         # zero_model(test, input_csv=True)
-        # trainset_df = []
-        # user_cf(trainset_df, input_csv=True, output_csv=False)
+        trainset_df = []
+        user_cf(trainset_df, input_csv=True, output_csv=False)
 
 
         # test = load_test_data(FILE_PATH+'test.txt', output_csv=True)
