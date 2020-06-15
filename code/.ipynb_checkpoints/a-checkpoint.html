@@ -1,0 +1,2487 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "colab_type": "text",
+    "id": "gIVf2DrpwKCE"
+   },
+   "source": [
+    "## 导入包以及设置全局变量\n",
+    "<hr>"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/",
+     "height": 124
+    },
+    "colab_type": "code",
+    "id": "P4jcTVtWsZEh",
+    "outputId": "3886eb37-aea0-4ae8-8c03-365db67becf8"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Go to this URL in a browser: https://accounts.google.com/o/oauth2/auth?client_id=947318989803-6bn6qk8qdgf4n4g3pfee6491hc0brc4i.apps.googleusercontent.com&redirect_uri=urn%3aietf%3awg%3aoauth%3a2.0%3aoob&response_type=code&scope=email%20https%3a%2f%2fwww.googleapis.com%2fauth%2fdocs.test%20https%3a%2f%2fwww.googleapis.com%2fauth%2fdrive%20https%3a%2f%2fwww.googleapis.com%2fauth%2fdrive.photos.readonly%20https%3a%2f%2fwww.googleapis.com%2fauth%2fpeopleapi.readonly\n",
+      "\n",
+      "Enter your authorization code:\n",
+      "··········\n",
+      "Mounted at /content/drive\n"
+     ]
+    }
+   ],
+   "source": [
+    "# connect with google drive\n",
+    "from google.colab import drive\n",
+    "drive.mount('/content/drive')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "DK7Er_ZWsGnm"
+   },
+   "outputs": [],
+   "source": [
+    "# 全局变量\n",
+    "# 设置随机数种子\n",
+    "SEED = 1\n",
+    "# 文件位置\n",
+    "FILE_PATH = ''\n",
+    "# 当前的路径\n",
+    "import os\n",
+    "os.chdir(\"/content/drive/My Drive/recommention\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "colab_type": "text",
+    "id": "pmwOSsCUblGP"
+   },
+   "source": [
+    "## 数据预处理\n",
+    "<hr>"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "VzxPscViRgmN"
+   },
+   "outputs": [],
+   "source": [
+    "import pickle\n",
+    "# 加载train_data 数据类型dict嵌套\n",
+    "# {use_ed:{item_id:score}}\n",
+    "def load_train_data(filepath, output_pickle=False, input_pickle=False):\n",
+    "    print('begin load train data')\n",
+    "    # 如果选择导入pickle格式的train数据集\n",
+    "    if input_pickle is True:\n",
+    "        train = pickle.load(open(FILE_PATH + 'train.pickle', 'rb'))\n",
+    "    else:  # 选择导入 txt格式的训练集\n",
+    "        with open(filepath, 'r') as f:\n",
+    "            train = {}\n",
+    "            while True:\n",
+    "                line = f.readline()\n",
+    "                if not line or line == '\\n':\n",
+    "                    break\n",
+    "\n",
+    "                id, item_num = line.split('|')\n",
+    "                id = int(id)\n",
+    "                item_num = int(item_num)\n",
+    "                item = {}\n",
+    "                # 遍历之后的内容\n",
+    "                for i in range(item_num):\n",
+    "                    line = f.readline()\n",
+    "                    item_id, score = line.split(\"  \")[:2]\n",
+    "                    # 数据类型转化\n",
+    "                    score = int(score)\n",
+    "                    item_id = int(item_id)\n",
+    "                    # 放入字典中\n",
+    "                    item[item_id] = score\n",
+    "                # 字典嵌套\n",
+    "                print(item)\n",
+    "                train[id] = item\n",
+    "\n",
+    "    # print(train)\n",
+    "\n",
+    "    # 使用dump()将数据序列化到文件中\n",
+    "    if output_pickle is True:\n",
+    "        with open(FILE_PATH + 'train.pickle', 'wb') as handle:\n",
+    "            pickle.dump(train, handle)\n",
+    "    print('load train data finish')\n",
+    "\n",
+    "    return train"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "G4-JcioeRneE"
+   },
+   "outputs": [],
+   "source": [
+    "train = load_train_data(filepath=FILE_PATH + 'train.txt', output_pickle=True, input_pickle=False)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "uQdAIgATUVNE"
+   },
+   "outputs": [],
+   "source": [
+    "# 随机选择的包\n",
+    "from numpy.random import choice\n",
+    "from numpy.random import seed\n",
+    "# 向下取整\n",
+    "from math import floor\n",
+    "import numpy as np\n",
+    "import pandas as pd\n",
+    "import pickle\n",
+    "\n",
+    "# 将dict类型的train数据转为df类型,存到trainset.csv 和testset.csv\n",
+    "# test_size = 0.2 选取的测试集的比例\n",
+    "def train_test_divide(train=[], output_csv=False, input_data=False, test_size=0.2):\n",
+    "    print('begin divide train and test')\n",
+    "    if input_data is True:\n",
+    "        # 导入所有的数据集\n",
+    "        train = pickle.load(open(FILE_PATH + 'train.pickle', 'rb'))\n",
+    "\n",
+    "    total_list = []\n",
+    "    # 存放test的数据\n",
+    "    testset = []\n",
+    "    print('begin divide test set')\n",
+    "    for id, item in train.items():\n",
+    "        # 设定随机数种子\n",
+    "        seed(SEED)\n",
+    "        # 从一个用户的所用评分中随机选择test_size比例的数据，作为测试集，不重复\n",
+    "        test_item_list = choice(list(item.keys()), size=floor(test_size * len(item.keys())), replace=False, )\n",
+    "        # test\n",
+    "        for test_item in test_item_list:\n",
+    "            testset.append([id, test_item, item[test_item]])\n",
+    "        # 所有的评分\n",
+    "        for item_id, score in item.items():\n",
+    "            total_list.append([id, item_id, score])\n",
+    "    # 将testset有dict转为df类型\n",
+    "    test_df = pd.DataFrame(data=testset, columns=['user', 'ID', 'score'])\n",
+    "    # 删去testset\n",
+    "    del testset\n",
+    "    \n",
+    "    print('begin divide traint set')\n",
+    "    # 选区total中有的但是测试集中没有的数据作为训练集\n",
+    "    # trainset = [i for i in total_list if i not in testset]\n",
+    "    # 将dict类型数据转为df类型\n",
+    "    total_df = pd.DataFrame(data=total_list, columns=['user', 'ID', 'score'])\n",
+    "    # 删去total list\n",
+    "    del total_list\n",
+    "\n",
+    "    # 先扩展再去重，得到trian\n",
+    "    train_df = total_df.append(test_df)\n",
+    "    train_df['user'] = train_df['user'].astype(int)\n",
+    "    # 所有的train数据减去重复的就是所得剩下的train（此train包含着验证集，也就是说验证集还没有划分）\n",
+    "    train_df.drop_duplicates(subset=['user', 'ID', 'score'], keep=False, inplace=True)\n",
+    "\n",
+    "    if output_csv is True:\n",
+    "        print('---------save as csv----------')\n",
+    "        total_df.set_index('user', inplace=True)\n",
+    "        total_df.to_csv(FILE_PATH + 'train.csv')\n",
+    "        del total_df\n",
+    "        train_df.set_index('user', inplace=True)\n",
+    "        train_df.to_csv(FILE_PATH + 'trainset.csv')\n",
+    "        del train_df\n",
+    "        test_df.set_index('user', inplace=True)\n",
+    "        test_df.to_csv(FILE_PATH + 'testset.csv')\n",
+    "        del test_df\n",
+    "    print('divide train and test end ')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/",
+     "height": 104
+    },
+    "colab_type": "code",
+    "id": "aiTlYLCsWKXJ",
+    "outputId": "f111d360-d5d4-4294-c8af-c30a0b0d966a"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "begin divide train and test\n",
+      "begin divide test set\n",
+      "begin divide traint set\n",
+      "---------save as csv----------\n",
+      "divide train and test end \n"
+     ]
+    }
+   ],
+   "source": [
+    "train_test_divide(input_data=True, output_csv=True, test_size=0.2)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/",
+     "height": 485
+    },
+    "colab_type": "code",
+    "id": "SJ-rn3ZcXB4X",
+    "outputId": "7887c2ab-5385-48b5-ef01-0d1c88b182d0"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "               user            ID         score\n",
+      "count  5.001507e+06  5.001507e+06  5.001507e+06\n",
+      "mean   9.605289e+03  3.110830e+05  4.954497e+01\n",
+      "std    5.714891e+03  1.794890e+05  3.822048e+01\n",
+      "min    0.000000e+00  0.000000e+00  0.000000e+00\n",
+      "25%    4.579000e+03  1.563420e+05  0.000000e+00\n",
+      "50%    9.440000e+03  3.073440e+05  5.000000e+01\n",
+      "75%    1.443300e+04  4.677770e+05  9.000000e+01\n",
+      "max    1.983400e+04  6.249600e+05  1.000000e+02\n",
+      "               user            ID         score\n",
+      "count  4.008915e+06  4.008915e+06  4.008915e+06\n",
+      "mean   9.605909e+03  3.105513e+05  4.960715e+01\n",
+      "std    5.714924e+03  1.795710e+05  3.821867e+01\n",
+      "min    0.000000e+00  1.000000e+00  0.000000e+00\n",
+      "25%    4.584000e+03  1.555220e+05  0.000000e+00\n",
+      "50%    9.440000e+03  3.065630e+05  5.000000e+01\n",
+      "75%    1.443300e+04  4.675300e+05  9.000000e+01\n",
+      "max    1.983400e+04  6.249600e+05  1.000000e+02\n",
+      "                user             ID          score\n",
+      "count  992592.000000  992592.000000  992592.000000\n",
+      "mean     9602.784316  313230.740165      49.293793\n",
+      "std      5714.758330  179141.546784      38.226789\n",
+      "min         0.000000       0.000000       0.000000\n",
+      "25%      4573.000000  159841.000000       0.000000\n",
+      "50%      9433.000000  311601.000000      50.000000\n",
+      "75%     14433.000000  469209.000000      90.000000\n",
+      "max     19834.000000  624960.000000     100.000000\n"
+     ]
+    }
+   ],
+   "source": [
+    "# 查看train trainset testset数据基本情况\n",
+    "total=pd.read_csv('train.csv')\n",
+    "print(total.describe())\n",
+    "del total\n",
+    "train = pd.read_csv('trainset.csv')\n",
+    "print(train.describe())\n",
+    "del train\n",
+    "test = pd.read_csv('testset.csv')\n",
+    "print(test.describe())\n",
+    "del test"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "jqKfsqZPsUF4"
+   },
+   "outputs": [],
+   "source": [
+    "import pandas as pd\n",
+    "# 加载item属性数据\n",
+    "# item dataframe columns=['ID', 'attribute1', 'attribute2']\n",
+    "def load_item(filepath, output_csv=False, input_csv=False):\n",
+    "    print(\"begin load data\")\n",
+    "\n",
+    "    if input_csv is True:\n",
+    "        item = pd.read_csv(FILE_PATH + 'item.csv')\n",
+    "    else:\n",
+    "        txt = np.loadtxt(filepath, dtype=str, delimiter='|')\n",
+    "        item = pd.DataFrame(data=txt, columns=['ID', 'attribute1', 'attribute2'])\n",
+    "\n",
+    "        # 将None替换为0\n",
+    "        # item 属性中没有值为0的数据，所以这里可以用0来填充\n",
+    "        item.replace('None', 0, inplace=True)\n",
+    "        # 数值类型转化\n",
+    "        item['ID'] = item['ID'].astype(int)\n",
+    "        item['attribute1'] = item['attribute1'].astype(int)\n",
+    "        item['attribute2'] = item['attribute2'].astype(int)\n",
+    "\n",
+    "        if output_csv is True:\n",
+    "            item.set_index('ID', inplace=True)\n",
+    "            item.to_csv(FILE_PATH + 'item.csv')\n",
+    "    print('load item data finish')\n",
+    "    del item"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/",
+     "height": 52
+    },
+    "colab_type": "code",
+    "id": "spj2RLO0cWVS",
+    "outputId": "22c242f8-cd11-4c3f-9fe5-9b1564cd1027"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "begin load data\n",
+      "load item data finish\n"
+     ]
+    }
+   ],
+   "source": [
+    "load_item(FILE_PATH + 'itemAttribute.txt', output_csv=True, input_csv=False)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/",
+     "height": 173
+    },
+    "colab_type": "code",
+    "id": "0wyiG4j6csw7",
+    "outputId": "5b33f400-ce8a-437e-e848-003e648a3c56"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "                  ID     attribute1     attribute2\n",
+      "count  507172.000000  507172.000000  507172.000000\n",
+      "mean   312358.434720  288394.873765  272492.800332\n",
+      "std    180450.970326  193840.412811  197227.095516\n",
+      "min         0.000000       0.000000       0.000000\n",
+      "25%    155968.750000  116850.000000   93881.000000\n",
+      "50%    312436.500000  285291.000000  258385.000000\n",
+      "75%    468662.750000  457641.000000  447486.000000\n",
+      "max    624960.000000  624943.000000  624951.000000\n"
+     ]
+    }
+   ],
+   "source": [
+    "item = pd.read_csv('item.csv')\n",
+    "print(item.describe())\n",
+    "del item"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/",
+     "height": 35
+    },
+    "colab_type": "code",
+    "id": "XgkS0JPTc2QE",
+    "outputId": "a470d1a2-4cdd-4aa1-efd2-5281914cc56f"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "attribute1 none:  42240 attribute2 none:  63485\n"
+     ]
+    }
+   ],
+   "source": [
+    "item = pd.read_csv('item.csv')\n",
+    "# 统计item中值为0的个数\n",
+    "temp_item = (item==0).astype(int)\n",
+    "del item\n",
+    "# print(temp_item.head())\n",
+    "atb1 = temp_item['attribute1'].sum()\n",
+    "atb2 = temp_item['attribute2'].sum()\n",
+    "del temp_item\n",
+    "print('attribute1 none: ', atb1, 'attribute2 none: ',atb2)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "colab_type": "text",
+    "id": "a1Rc-iY0wamk"
+   },
+   "source": [
+    "## 数据清洗\n",
+    "<hr>"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/",
+     "height": 173
+    },
+    "colab_type": "code",
+    "id": "yyNsWs3fefZp",
+    "outputId": "d6c28e2c-702b-47c0-d69c-d30fae3aed80"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "                  ID     attribute1     attribute2\n",
+      "count  507172.000000  507172.000000  507172.000000\n",
+      "mean   312358.434720  288394.873765  272492.800332\n",
+      "std    180450.970326  193840.412811  197227.095516\n",
+      "min         0.000000       0.000000       0.000000\n",
+      "25%    155968.750000  116850.000000   93881.000000\n",
+      "50%    312436.500000  285291.000000  258385.000000\n",
+      "75%    468662.750000  457641.000000  447486.000000\n",
+      "max    624960.000000  624943.000000  624951.000000\n"
+     ]
+    }
+   ],
+   "source": [
+    "import pandas as pd\n",
+    "item = pd.read_csv('item.csv')\n",
+    "print(item.describe())"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "kn0SFZ-KwbGk"
+   },
+   "outputs": [],
+   "source": [
+    "from tqdm.auto import tqdm\n",
+    "import pandas as pd \n",
+    "# 数据清洗\n",
+    "def item_data_clearning(item, output_csv=False, already_cleaning=False):\n",
+    "    print('begin item data cleaning')\n",
+    "    print('------------------item data head----------------------')\n",
+    "    print(item.head())\n",
+    "    print('------------------item data describe----------------------')\n",
+    "    print(item.describe())\n",
+    "    print('------------------item data info ----------------------')\n",
+    "    print(item.info())\n",
+    "    if already_cleaning is True:\n",
+    "        return item\n",
+    "    else:\n",
+    "        # none值处理\n",
+    "        # attribute1的平均值\n",
+    "        attribute1_avg = item['attribute1'].mean()\n",
+    "        # 将0值即之间的none值替换为均值\n",
+    "        item['attribute1'].replace(0, attribute1_avg, inplace=True)\n",
+    "        # attribute2的平均值\n",
+    "        attribute2_avg = item['attribute2'].mean()\n",
+    "        # 将0值即之间的none值替换为均值\n",
+    "        item['attribute2'].replace(0, attribute2_avg, inplace=True)\n",
+    "        # print(item.head())\n",
+    "\n",
+    "        # 物品属性缺失处理\n",
+    "        # ID max = 624960+1 从零开始计数的\n",
+    "        # ID rows = 507172\n",
+    "        # 缺失 624960+1-507172个，将这些值使用平均值进行填充，\n",
+    "        ID_max = item['ID'].max()\n",
+    "        print('--------------------ID_max------------------------')\n",
+    "        print(ID_max)\n",
+    "        # 实际上应该有的所有ID\n",
+    "        ID_full_list = set(range(ID_max))\n",
+    "        print('--------------------ID_full_list------------------------')\n",
+    "        # print(ID_full_list)\n",
+    "        # 数据集中给出的ID\n",
+    "        ID_list = set(item['ID'].tolist())\n",
+    "        print('--------------------ID_list------------------------')\n",
+    "        # print(ID_list)\n",
+    "        # 两者做差集求出缺失的ID\n",
+    "        ID_null = ID_full_list - ID_list\n",
+    "        print('--------------------ID_null------------------------')\n",
+    "        print(len(ID_null))\n",
+    "        # 将缺失的ID用均值进行填充\n",
+    "        df_list = []\n",
+    "        # 显示进度条\n",
+    "        with tqdm(total=len(ID_null), desc='ID null fill process') as bar:\n",
+    "            for id_null in ID_null:\n",
+    "                temp_dict = {'ID': id_null, 'attribute1': attribute1_avg, 'attribute2': attribute2_avg}\n",
+    "                df_list.append(temp_dict)\n",
+    "                bar.update(1)\n",
+    "        # 将list形式转化为df形式\n",
+    "        temp_df = pd.DataFrame(data=df_list, columns=['ID', 'attribute1', 'attribute2'])\n",
+    "        # 将新生成的df添加到item中\n",
+    "        item = item.append(temp_df, ignore_index=True)\n",
+    "        # 安装ID从小到大排序\n",
+    "        item.sort_values(by=['ID'], ascending=True, inplace=True)\n",
+    "        # 将ID设置为index\n",
+    "        item.set_index('ID', inplace=True)\n",
+    "\n",
+    "        # 重复值处理\n",
+    "        # 无重复值\n",
+    "        print(\"--------------------- item duplication---------------------\")\n",
+    "        print(item[item.duplicated()])\n",
+    "\n",
+    "        # 输出为csv\n",
+    "        if output_csv is True:\n",
+    "            item.to_csv(FILE_PATH + 'item.csv')\n",
+    "\n",
+    "    print('item data cleaning finish')\n",
+    "    return item\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/",
+     "height": 173
+    },
+    "colab_type": "code",
+    "id": "DKqJwNTgeJ7c",
+    "outputId": "8fce3bc3-b6cf-4db4-97aa-12b30c8613f6"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "                  ID     attribute1     attribute2\n",
+      "count  624961.000000  624961.000000  624961.000000\n",
+      "mean   312480.000000  312413.943170  306601.949554\n",
+      "std    180410.845128  156213.745022  151921.864345\n",
+      "min         0.000000       9.000000      31.000000\n",
+      "25%    156240.000000  211524.000000  221483.000000\n",
+      "50%    312480.000000  312413.943169  306601.949554\n",
+      "75%    468720.000000  418894.000000  401338.000000\n",
+      "max    624960.000000  624943.000000  624951.000000\n"
+     ]
+    }
+   ],
+   "source": [
+    "# item = item_data_clearning(item, True,False)\n",
+    "item = pd.read_csv('item.csv')\n",
+    "print(item.describe())"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "colab_type": "text",
+    "id": "eYkbHFulwiSj"
+   },
+   "source": [
+    "## 训练集，测试集划分\n",
+    "<hr>"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "87E0JkKdtFDr"
+   },
+   "outputs": [],
+   "source": [
+    "# 将dict类型的train数据转为df类型，并于item_plus 合并\n",
+    "# test_size = 0.2 选取的测试集的比例\n",
+    "def train_test_divide(train, output_csv=False, input_data=False, test_size=0.2):\n",
+    "    print('begin divide train and test')\n",
+    "    if input_data is True:\n",
+    "        # 导入item_plus\n",
+    "        item_plus = pd.read_csv(FILE_PATH + 'item_plus.csv')\n",
+    "        # item_plus = pd.read_csv(FILE_PATH + 'item_plus.csv', header=0, names=['Unnamed','user','ID_Power2','attribute2','attribute1','user_Power2','ID','user_Power2_multiply_ID','user_Power2_multiply_user','ID_multiply_ID_Power2'])\n",
+    "        # 导入所有的数据集\n",
+    "        train = pickle.load(open(FILE_PATH + 'train.pickle', 'rb'))\n",
+    "    # print(item_plus.head())\n",
+    "\n",
+    "    # 去掉第一列\n",
+    "    # item_plus.drop(['Unnamed'], axis=1, inplace=True)\n",
+    "    # print(item_plus.head())\n",
+    "\n",
+    "    total_list = []\n",
+    "    # 存放test的数据\n",
+    "    testset = []\n",
+    "    print('begin divide test set')\n",
+    "    for id, item in train.items():\n",
+    "        # 从一个用户的所用评分中随机选择test_size比例的数据，作为测试集，不重复\n",
+    "        test_item_list = choice(list(item.keys()), size=floor(test_size * len(item.keys())), replace=False)\n",
+    "        # test\n",
+    "        for test_item in test_item_list:\n",
+    "            testset.append([id, test_item, item[test_item]])\n",
+    "        # 所有的评分\n",
+    "        for item_id, score in item.items():\n",
+    "            total_list.append([id, item_id, score])\n",
+    "    # 将testset有dict转为df类型\n",
+    "    test_df = pd.DataFrame(data=testset, columns=['user', 'ID', 'score'])\n",
+    "    # 删去testset\n",
+    "    del testset\n",
+    "\n",
+    "    print('begin divide traint set')\n",
+    "    # 选区total中有的但是测试集中没有的数据作为训练集\n",
+    "    # trainset = [i for i in total_list if i not in testset]\n",
+    "    # 将dict类型数据转为df类型\n",
+    "    total_df = pd.DataFrame(data=total_list, columns=['user', 'ID', 'score'])\n",
+    "    # 删去total list\n",
+    "    del total_list\n",
+    "\n",
+    "    # 先扩展再去重，得到trian\n",
+    "    train_df = total_df.append(test_df)\n",
+    "    train_df['user'] = train_df['user'].astype(int)\n",
+    "    # 所有的train数据减去重复的就是所得剩下的train（此train包含着验证集，也就是说验证集还没有划分）\n",
+    "    train_df.drop_duplicates(subset=['user', 'ID', 'score'], keep=False, inplace=True)\n",
+    "    print('--------begin merge test and item plus ------')\n",
+    "    test_df_plus = pd.merge(test_df, item_plus, on=['user', 'ID'], how='left')\n",
+    "\n",
+    "    print('-----------test_df_plus.describe()---------')\n",
+    "    print(test_df_plus.describe())\n",
+    "\n",
+    "    if output_csv is True:\n",
+    "        print('---------save as csv----------')\n",
+    "        test_df.set_index('user', inplace=True)\n",
+    "        test_df.to_csv(FILE_PATH + 'testset.csv')\n",
+    "        test_df_plus.set_index('user', inplace=True)\n",
+    "        test_df_plus.to_csv(FILE_PATH + 'testset_plus.csv')\n",
+    "\n",
+    "    del test_df_plus\n",
+    "\n",
+    "    if output_csv is True:\n",
+    "        print('---------save as csv----------')\n",
+    "        total_df.set_index('user', inplace=True)\n",
+    "        total_df.to_csv(FILE_PATH + 'train.csv')\n",
+    "    del total_df\n",
+    "\n",
+    "    print('--------begin merge train and item plus ------')\n",
+    "    train_df_plus = pd.merge(train_df, item_plus, on=['user', 'ID'], how='left')\n",
+    "    if output_csv is True:\n",
+    "        print('---------save as csv----------')\n",
+    "\n",
+    "        train_df.set_index('user', inplace=True)\n",
+    "        train_df.to_csv(FILE_PATH + 'trainset.csv')\n",
+    "        train_df_plus.set_index('user', inplace=True)\n",
+    "        train_df_plus.to_csv(FILE_PATH + 'trainset_plus.csv')\n",
+    "    del train_df\n",
+    "\n",
+    "    print('------------train_df_plus.describe()------------')\n",
+    "    print(train_df_plus.describe())\n",
+    "    del train_df_plus\n",
+    "    # 保存item plus\n",
+    "    # if output_csv is True:\n",
+    "        # print('---------save as csv----------')\n",
+    "\n",
+    "        # item_plus.set_index('user', inplace=True)\n",
+    "        # item_plus.to_csv(FILE_PATH+'item_plus.csv')\n",
+    "    print('divide train and test end ')\n",
+    "    return 0"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "colab_type": "text",
+    "id": "eMyN8KX8wrET"
+   },
+   "source": [
+    "## 建立模型\n",
+    "<hr>"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "colab_type": "text",
+    "id": "IyJVVcC0wnB0"
+   },
+   "source": [
+    "### 0模型\n",
+    "<hr>"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/",
+     "height": 211
+    },
+    "colab_type": "code",
+    "id": "CHXh8YrytOOP",
+    "outputId": "bd729c4b-7c91-4330-a72b-b5033b2a5a55"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "zero model begin\n",
+      "1\n",
+      "   user      ID  score  pred_mean  pred_50  pred_median  pred_freq\n",
+      "0     0  120328     90  49.607155       50         50.0          0\n",
+      "1     0   22757     90  49.607155       50         50.0          0\n",
+      "2     0  578821     90  49.607155       50         50.0          0\n",
+      "3     0  464229     90  49.607155       50         50.0          0\n",
+      "4     0  392726     90  49.607155       50         50.0          0\n",
+      "mean rmse:  38.22805419301362 50 rmse:  38.23329255713531 median rmse:  38.23329255713531 freq rmse:  62.37919526513844\n",
+      "zero model finish\n"
+     ]
+    }
+   ],
+   "source": [
+    "from sklearn.metrics import mean_squared_error\n",
+    "import pandas as pd\n",
+    "from math import sqrt\n",
+    "# 0模型\n",
+    "def zero_model(testset=[], input_csv=False):\n",
+    "    print('zero model begin')\n",
+    "    if input_csv is True:\n",
+    "        testset = pd.read_csv(FILE_PATH + 'testset.csv')\n",
+    "        trainset = pd.read_csv(FILE_PATH + 'trainset.csv')\n",
+    "    # 注意直接使用 test_predict1 = testset为浅拷贝\n",
+    "    # 使用testset.copy(deep=True) 时为深拷贝\n",
+    "    # 使用testset.copy(deep=False) 时为浅拷贝，相当于 test_predict1 = testset\n",
+    "    real_score = testset['score']\n",
+    "    test_predict = testset.copy(deep=True)\n",
+    "    del testset\n",
+    "    # 均值\n",
+    "    test_predict['pred_mean'] = trainset['score'].mean()\n",
+    "    test_predict['pred_50'] = 50\n",
+    "    # 中值\n",
+    "    test_predict['pred_median'] = trainset['score'].median()\n",
+    "    # 众值\n",
+    "    test_predict['pred_freq'] = trainset['score'].mode()[0]\n",
+    "    # 计算两种的rmse\n",
+    "    # zero_model_rmse1 38.223879691036416\n",
+    "    # 所得模型的rmse 必须比该值低才有效果\n",
+    "    zero_model_rmse1 = sqrt(mean_squared_error(real_score,test_predict['pred_mean']))\n",
+    "    # zero_model_rmse2 38.22696157454122\n",
+    "    zero_model_rmse2 = sqrt(mean_squared_error(real_score,test_predict['pred_50']))\n",
+    "    # 38.23329255713531\n",
+    "    zero_model_rmse3 = sqrt(mean_squared_error(real_score,test_predict['pred_median']))\n",
+    "    # 62.3791952651384\n",
+    "    zero_model_rmse4 = sqrt(mean_squared_error(real_score,test_predict['pred_freq']))\n",
+    "    print('mean rmse: ',zero_model_rmse1, '50 rmse: ', zero_model_rmse2, 'median rmse: ', zero_model_rmse3, 'freq rmse: ', zero_model_rmse4)\n",
+    "\n",
+    "    print('zero model finish')\n",
+    "zero_model(input_csv=True)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "colab_type": "text",
+    "id": "y-jAceaswqGm"
+   },
+   "source": [
+    "### 基模型SVD\n",
+    "<hr>"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/",
+     "height": 315
+    },
+    "colab_type": "code",
+    "id": "pDHTJcmiPVHL",
+    "outputId": "d11e14ed-afac-4ed2-e6e1-9c554d8957e8"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Collecting surprise\n",
+      "  Downloading https://files.pythonhosted.org/packages/61/de/e5cba8682201fcf9c3719a6fdda95693468ed061945493dea2dd37c5618b/surprise-0.1-py2.py3-none-any.whl\n",
+      "Collecting scikit-surprise\n",
+      "\u001b[?25l  Downloading https://files.pythonhosted.org/packages/f5/da/b5700d96495fb4f092be497f02492768a3d96a3f4fa2ae7dea46d4081cfa/scikit-surprise-1.1.0.tar.gz (6.4MB)\n",
+      "\u001b[K     |████████████████████████████████| 6.5MB 2.7MB/s \n",
+      "\u001b[?25hRequirement already satisfied: joblib>=0.11 in /usr/local/lib/python3.6/dist-packages (from scikit-surprise->surprise) (0.15.1)\n",
+      "Requirement already satisfied: numpy>=1.11.2 in /usr/local/lib/python3.6/dist-packages (from scikit-surprise->surprise) (1.18.5)\n",
+      "Requirement already satisfied: scipy>=1.0.0 in /usr/local/lib/python3.6/dist-packages (from scikit-surprise->surprise) (1.4.1)\n",
+      "Requirement already satisfied: six>=1.10.0 in /usr/local/lib/python3.6/dist-packages (from scikit-surprise->surprise) (1.12.0)\n",
+      "Building wheels for collected packages: scikit-surprise\n",
+      "  Building wheel for scikit-surprise (setup.py) ... \u001b[?25l\u001b[?25hdone\n",
+      "  Created wheel for scikit-surprise: filename=scikit_surprise-1.1.0-cp36-cp36m-linux_x86_64.whl size=1675385 sha256=bc60783159cf10e59119d66782f38237a38a4fbf7f6bed7ca7ede1ccc44f4405\n",
+      "  Stored in directory: /root/.cache/pip/wheels/cc/fa/8c/16c93fccce688ae1bde7d979ff102f7bee980d9cfeb8641bcf\n",
+      "Successfully built scikit-surprise\n",
+      "Installing collected packages: scikit-surprise, surprise\n",
+      "Successfully installed scikit-surprise-1.1.0 surprise-0.1\n"
+     ]
+    }
+   ],
+   "source": [
+    "!pip install surprise"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "VzTVtAHYPL-F"
+   },
+   "outputs": [],
+   "source": [
+    "from sklearn import preprocessing\n",
+    "from sklearn.metrics import mean_squared_error\n",
+    "import matplotlib.pyplot as plt\n",
+    "from surprise import KNNBaseline,Dataset, Reader, BaselineOnly, accuracy, SVD, KNNBasic, CoClustering, KNNWithMeans, SVDpp,SlopeOne,NormalPredictor,AlgoBase,KNNWithZScore\n",
+    "from surprise.model_selection import cross_validate, KFold, PredefinedKFold, train_test_split, GridSearchCV\n",
+    "# 随机选择的包\n",
+    "from numpy.random import choice\n",
+    "# 向下取整\n",
+    "from math import floor\n",
+    "import time\n",
+    "import pandas as pd\n",
+    "import numpy as np\n",
+    "from surprise.dump import dump, load"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "colab_type": "text",
+    "id": "l4bJkR2NEdeg"
+   },
+   "source": [
+    "##### 0-100"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/",
+     "height": 121
+    },
+    "colab_type": "code",
+    "id": "FP2paHwbEgQX",
+    "outputId": "d116eb10-1774-4d80-8dc7-0fe79d502e1c"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "begin svd\n",
+      "fit begin\n",
+      "fit end\n",
+      "Running time: 496.3608461210001 Seconds\n",
+      "Running time: 512.2356659339998 Seconds\n",
+      "rmse on test scale 0-100: 26.8254386470559\n"
+     ]
+    }
+   ],
+   "source": [
+    "# 基模型\n",
+    "def svd(train=[], input_csv=False, output_csv=False):\n",
+    "    print('begin svd')\n",
+    "    begin = time.perf_counter()\n",
+    "    # 告诉文本阅读器，文本的格式是怎么样的\n",
+    "    reader = Reader(line_format='user item rating', sep=',', skip_lines=1,rating_scale=(0,100))\n",
+    "    # 从csv中加载数据\n",
+    "    if input_csv is True:\n",
+    "        # 指定文件所在路径\n",
+    "        file_path = os.path.expanduser('trainset.csv')\n",
+    "        # 加载数据\n",
+    "        train_cf = Dataset.load_from_file(file_path, reader=reader)\n",
+    "        # 如果训练所有数据取消掉下面的注释\n",
+    "        #---------------------------------------------------\n",
+    "        trainset = train_cf.build_full_trainset()\n",
+    "        #---------------------------------------------------\n",
+    "    else:\n",
+    "        # 从已有得df中加载数据\n",
+    "        train_cf = Dataset.load_from_df(train, reader=reader)\n",
+    "\n",
+    "    # algo = SVD(n_epochs=40, lr_all=0.005, reg_all=0.01, n_factors=200)\n",
+    "    algo = SVD(n_epochs=5, lr_all=0.002, reg_all=0.2, n_factors=650)\n",
+    "    print('fit begin')\n",
+    "    fit_time_begin = time.perf_counter()\n",
+    "\n",
+    "    algo.fit(trainset)\n",
+    "\n",
+    "    fit_time_end = time.perf_counter()\n",
+    "    print('fit end')\n",
+    "    print('Running time: %s Seconds' % (fit_time_end - fit_time_begin))\n",
+    "\n",
+    "    end = time.perf_counter()\n",
+    "    print('Running time: %s Seconds' % (end - begin))\n",
+    "    return algo\n",
+    "\n",
+    "algo = svd(input_csv=True, output_csv=False)\n",
+    "  \n",
+    "test = pd.read_csv('testset.csv')\n",
+    "# 加载真实的score数据\n",
+    "test_score = test['score'].tolist()\n",
+    "# 遍历测试集进行预测\n",
+    "pred =[]\n",
+    "for row in test.itertuples():\n",
+    "  # 注意这里一定要 把 user ， item_id 转为str格式的\n",
+    "  pred.append(algo.predict(str(row[1]), str(row[2]), r_ui=row[3]).est)\n",
+    "del algo\n",
+    "# 四舍五入\n",
+    "pred_round = np.round(pred)\n",
+    "from sklearn.metrics import mean_squared_error\n",
+    "# 计算rmse\n",
+    "rmse = np.sqrt(mean_squared_error(test_score,pred_round))\n",
+    "print('rmse on test scale 0-100:', rmse)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "colab_type": "text",
+    "id": "hCKM_126J-v7"
+   },
+   "source": [
+    "##### 1-5 "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/",
+     "height": 173
+    },
+    "colab_type": "code",
+    "id": "d5u97lRD71tU",
+    "outputId": "b8e410e6-f711-47a9-ea56-4574fa3cc542"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "begin svd\n",
+      "fit begin\n",
+      "fit end\n",
+      "Running time: 3870.6326012169993 Seconds\n",
+      "Running time: 3890.125212007999 Seconds\n",
+      "rmse on test scale[1,5]: 0.557900974251203\n",
+      "rmse on test scale 0-100: 14.195665370408184\n",
+      "The dump has been saved as file svd-250.model\n",
+      "Running time: 3921.0041863509978 Seconds\n"
+     ]
+    }
+   ],
+   "source": [
+    "import time\n",
+    "all_begin = time.perf_counter()\n",
+    "# 基模型\n",
+    "def svd(train=[], input_csv=False):\n",
+    "    print('begin svd')\n",
+    "    begin = time.perf_counter()\n",
+    "    # 告诉文本阅读器，文本的格式是怎么样的\n",
+    "    reader = Reader(line_format='user item rating', sep=',', skip_lines=1,rating_scale=(1,5))\n",
+    "    # 从csv中加载数据\n",
+    "    if input_csv is True:\n",
+    "        # 指定文件所在路径\n",
+    "        file_path = os.path.expanduser('trainset_score[1,5]_2.csv')\n",
+    "        # 加载数据\n",
+    "        train_cf = Dataset.load_from_file(file_path, reader=reader)\n",
+    "        # 如果训练所有数据取消掉下面的注释\n",
+    "        #---------------------------------------------------\n",
+    "        trainset = train_cf.build_full_trainset()\n",
+    "        #---------------------------------------------------\n",
+    "    else:\n",
+    "        # 从已有得df中加载数据\n",
+    "        train_cf = Dataset.load_from_df(train, reader=reader)\n",
+    "\n",
+    "    algo = SVD(n_epochs=150, lr_all=0.003, reg_all=0.01, n_factors=250)\n",
+    "    print('fit begin')\n",
+    "    fit_time_begin = time.perf_counter()\n",
+    "\n",
+    "    algo.fit(trainset)\n",
+    "\n",
+    "    fit_time_end = time.perf_counter()\n",
+    "    print('fit end')\n",
+    "    print('Running time: %s Seconds' % (fit_time_end - fit_time_begin))\n",
+    "\n",
+    "    end = time.perf_counter()\n",
+    "    print('Running time: %s Seconds' % (end - begin))\n",
+    "    return algo\n",
+    "\n",
+    "algo = svd(input_csv=True)\n",
+    "# 相当于swithch case 语句\n",
+    "def rescale1_5(score):\n",
+    "  switcher = {\n",
+    "      1: 10,\n",
+    "      2: 30,\n",
+    "      3: 50,\n",
+    "      4: 70,\n",
+    "      5: 90,\n",
+    "  }\n",
+    "  # 默认值为50\n",
+    "  return switcher.get(score,50)\n",
+    "  \n",
+    "total = pd.read_csv('train.csv')\n",
+    "test = pd.read_csv('testset_score[1,5]_2.csv')\n",
+    "# 合并两个df\n",
+    "temp_test = pd.merge(total, test, on=['user','ID'], how='inner')\n",
+    "# print(temp_test.head(10))\n",
+    "del total,test\n",
+    "# 加载真实的score数据\n",
+    "test_score = temp_test['score'].tolist()\n",
+    "# 遍历测试集进行预测\n",
+    "pred =[]\n",
+    "for row in temp_test.itertuples():\n",
+    "  # 注意这里一定要 把 user ， item_id 转为str格式的\n",
+    "  pred.append(algo.predict(str(row[1]), str(row[2]), r_ui=row[4]).est)\n",
+    "# 计算在1-5评分上的rmse\n",
+    "rmse_test = np.sqrt(mean_squared_error(temp_test['score[1,5]'].tolist(),pred))\n",
+    "print('rmse on test scale[1,5]:', rmse_test)\n",
+    "# 四舍五入\n",
+    "pred_round = np.round(pred)\n",
+    "# 从1-5转到原来的数据\n",
+    "pred_score = []\n",
+    "for p in pred_round:\n",
+    "  # 先转化为int\n",
+    "  pred_score.append(rescale1_5(int(p)))\n",
+    "from sklearn.metrics import mean_squared_error\n",
+    "# 计算rmse\n",
+    "rmse = np.sqrt(mean_squared_error(test_score,pred_score))\n",
+    "print('rmse on test scale 0-100:', rmse)\n",
+    "dump('svd-250.model', algo=algo, verbose=1)\n",
+    "del algo\n",
+    "all_end = time.perf_counter()\n",
+    "print('Running time: %s Seconds' % (all_end - all_begin))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/",
+     "height": 173
+    },
+    "colab_type": "code",
+    "id": "Ru0Um1A58QSf",
+    "outputId": "a87768fc-ac10-42a0-865b-ce7cc5e152b1"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "begin svd\n",
+      "fit begin\n",
+      "fit end\n",
+      "Running time: 9173.295017212 Seconds\n",
+      "Running time: 9189.224715484997 Seconds\n",
+      "rmse on test scale[1,5]: 0.5419102636190679\n",
+      "rmse on test scale 0-100: 13.873494305261236\n",
+      "The dump has been saved as file svd-350.model\n",
+      "Running time: 9219.471392734002 Seconds\n"
+     ]
+    }
+   ],
+   "source": [
+    "import time\n",
+    "all_begin = time.perf_counter()\n",
+    "# 基模型\n",
+    "def svd(train=[], input_csv=False):\n",
+    "    print('begin svd')\n",
+    "    begin = time.perf_counter()\n",
+    "    # 告诉文本阅读器，文本的格式是怎么样的\n",
+    "    reader = Reader(line_format='user item rating', sep=',', skip_lines=1,rating_scale=(1,5))\n",
+    "    # 从csv中加载数据\n",
+    "    if input_csv is True:\n",
+    "        # 指定文件所在路径\n",
+    "        file_path = os.path.expanduser('trainset_score[1,5]_2.csv')\n",
+    "        # 加载数据\n",
+    "        train_cf = Dataset.load_from_file(file_path, reader=reader)\n",
+    "        # 如果训练所有数据取消掉下面的注释\n",
+    "        #---------------------------------------------------\n",
+    "        trainset = train_cf.build_full_trainset()\n",
+    "        #---------------------------------------------------\n",
+    "    else:\n",
+    "        # 从已有得df中加载数据\n",
+    "        train_cf = Dataset.load_from_df(train, reader=reader)\n",
+    "\n",
+    "    algo = SVD(n_epochs=350, lr_all=0.003, reg_all=0.01, n_factors=250)\n",
+    "    print('fit begin')\n",
+    "    fit_time_begin = time.perf_counter()\n",
+    "\n",
+    "    algo.fit(trainset)\n",
+    "\n",
+    "    fit_time_end = time.perf_counter()\n",
+    "    print('fit end')\n",
+    "    print('Running time: %s Seconds' % (fit_time_end - fit_time_begin))\n",
+    "\n",
+    "    end = time.perf_counter()\n",
+    "    print('Running time: %s Seconds' % (end - begin))\n",
+    "    return algo\n",
+    "\n",
+    "algo = svd(input_csv=True)\n",
+    "# 相当于swithch case 语句\n",
+    "def rescale1_5(score):\n",
+    "  switcher = {\n",
+    "      1: 10,\n",
+    "      2: 30,\n",
+    "      3: 50,\n",
+    "      4: 70,\n",
+    "      5: 90,\n",
+    "  }\n",
+    "  # 默认值为50\n",
+    "  return switcher.get(score,50)\n",
+    "  \n",
+    "total = pd.read_csv('train.csv')\n",
+    "test = pd.read_csv('testset_score[1,5]_2.csv')\n",
+    "# 合并两个df\n",
+    "temp_test = pd.merge(total, test, on=['user','ID'], how='inner')\n",
+    "# print(temp_test.head(10))\n",
+    "del total,test\n",
+    "# 加载真实的score数据\n",
+    "test_score = temp_test['score'].tolist()\n",
+    "# 遍历测试集进行预测\n",
+    "pred =[]\n",
+    "for row in temp_test.itertuples():\n",
+    "  # 注意这里一定要 把 user ， item_id 转为str格式的\n",
+    "  pred.append(algo.predict(str(row[1]), str(row[2]), r_ui=row[4]).est)\n",
+    "# 计算在1-5评分上的rmse\n",
+    "rmse_test = np.sqrt(mean_squared_error(temp_test['score[1,5]'].tolist(),pred))\n",
+    "print('rmse on test scale[1,5]:', rmse_test)\n",
+    "# 四舍五入\n",
+    "pred_round = np.round(pred)\n",
+    "# 从1-5转到原来的数据\n",
+    "pred_score = []\n",
+    "for p in pred_round:\n",
+    "  # 先转化为int\n",
+    "  pred_score.append(rescale1_5(int(p)))\n",
+    "from sklearn.metrics import mean_squared_error\n",
+    "# 计算rmse\n",
+    "rmse = np.sqrt(mean_squared_error(test_score,pred_score))\n",
+    "print('rmse on test scale 0-100:', rmse)\n",
+    "dump('svd-350.model', algo=algo, verbose=1)\n",
+    "del algo\n",
+    "all_end = time.perf_counter()\n",
+    "print('Running time: %s Seconds' % (all_end - all_begin))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "colab_type": "text",
+    "id": "mPHoU1hewcmL"
+   },
+   "source": [
+    "##### user cf 1-5"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/",
+     "height": 87
+    },
+    "colab_type": "code",
+    "id": "9JS6WTsOwe4N",
+    "outputId": "89913365-1ebe-4cfc-cd87-a56aa0edc94b"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "begin user cf\n",
+      "fit begin\n",
+      "Estimating biases using als...\n",
+      "Computing the pearson_baseline similarity matrix...\n"
+     ]
+    }
+   ],
+   "source": [
+    "# 基模型\n",
+    "def user_cf(train=[], input_csv=False):\n",
+    "    print('begin user cf')\n",
+    "    begin = time.perf_counter()\n",
+    "    # 告诉文本阅读器，文本的格式是怎么样的\n",
+    "    reader = Reader(line_format='user item rating', sep=',', skip_lines=1,rating_scale=(1,5))\n",
+    "    # 从csv中加载数据\n",
+    "    if input_csv is True:\n",
+    "        # 指定文件所在路径\n",
+    "        file_path = os.path.expanduser('trainset_score[1,5]_2.csv')\n",
+    "        # 加载数据\n",
+    "        train_cf = Dataset.load_from_file(file_path, reader=reader)\n",
+    "        # 如果训练所有数据取消掉下面的注释\n",
+    "        #---------------------------------------------------\n",
+    "        trainset = train_cf.build_full_trainset()\n",
+    "        #---------------------------------------------------\n",
+    "    else:\n",
+    "        # 从已有得df中加载数据\n",
+    "        train_cf = Dataset.load_from_df(train, reader=reader)\n",
+    "\n",
+    "    sim_options = {'name': 'pearson_baseline',\n",
+    "                  'shrinkage': 100  #  shrinkage\n",
+    "               }\n",
+    "    algo = KNNWithMeans(k=40,sim_options=sim_options) # 1.52\n",
+    "\n",
+    "    # 如果训练所有数据取消掉下面的注释\n",
+    "    #---------------------------------------------------\n",
+    "    # algo = SVD(n_epochs=150, lr_all=0.003, reg_all=0.01, n_factors=250)\n",
+    "    print('fit begin')\n",
+    "    fit_time_begin = time.perf_counter()\n",
+    "\n",
+    "    algo.fit(trainset)\n",
+    "\n",
+    "    fit_time_end = time.perf_counter()\n",
+    "    print('fit end')\n",
+    "    print('Running time: %s Seconds' % (fit_time_end - fit_time_begin))\n",
+    "\n",
+    "    end = time.perf_counter()\n",
+    "    print('Running time: %s Seconds' % (end - begin))\n",
+    "    return algo\n",
+    "\n",
+    "algo = user_cf(input_csv=True)\n",
+    "# 相当于swithch case 语句\n",
+    "def rescale1_5(score):\n",
+    "  switcher = {\n",
+    "      1: 10,\n",
+    "      2: 30,\n",
+    "      3: 50,\n",
+    "      4: 70,\n",
+    "      5: 90,\n",
+    "  }\n",
+    "  # 默认值为50\n",
+    "  return switcher.get(score,50)\n",
+    "  \n",
+    "total = pd.read_csv('train.csv')\n",
+    "test = pd.read_csv('testset_score[1,5]_2.csv')\n",
+    "# 合并两个df\n",
+    "temp_test = pd.merge(total, test, on=['user','ID'], how='inner')\n",
+    "# print(temp_test.head(10))\n",
+    "del total,test\n",
+    "# 加载真实的score数据\n",
+    "test_score = temp_test['score'].tolist()\n",
+    "# 遍历测试集进行预测\n",
+    "pred =[]\n",
+    "for row in temp_test.itertuples():\n",
+    "  # 注意这里一定要 把 user ， item_id 转为str格式的\n",
+    "  pred.append(algo.predict(str(row[1]), str(row[2]), r_ui=row[4]).est)\n",
+    "# 计算在1-5评分上的rmse\n",
+    "rmse_test = np.sqrt(mean_squared_error(temp_test['score[1,5]'].tolist(),pred))\n",
+    "print('rmse on test scale[1,5]:', rmse_test)\n",
+    "# 四舍五入\n",
+    "pred_round = np.round(pred)\n",
+    "# 从1-5转到原来的数据\n",
+    "pred_score = []\n",
+    "for p in pred_round:\n",
+    "  # 先转化为int\n",
+    "  pred_score.append(rescale1_5(int(p)))\n",
+    "from sklearn.metrics import mean_squared_error\n",
+    "# 计算rmse\n",
+    "rmse = np.sqrt(mean_squared_error(test_score,pred_score))\n",
+    "print('rmse on test scale 0-100:', rmse)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "colab_type": "text",
+    "id": "NwdJ35oQeBnr"
+   },
+   "source": [
+    "#### final"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "8JGbXJ_7eEF5"
+   },
+   "outputs": [],
+   "source": [
+    "# 基模型\n",
+    "def svd2(train=[], input_csv=False):\n",
+    "    print('begin svd')\n",
+    "    begin = time.perf_counter()\n",
+    "    # 告诉文本阅读器，文本的格式是怎么样的\n",
+    "    reader = Reader(line_format='user item rating', sep=',', skip_lines=1,rating_scale=(1,5))\n",
+    "    # 从csv中加载数据\n",
+    "    if input_csv is True:\n",
+    "        # 指定文件所在路径\n",
+    "        file_path = os.path.expanduser('train_score[1,5].csv')\n",
+    "        # 加载数据\n",
+    "        train_cf = Dataset.load_from_file(file_path, reader=reader)\n",
+    "        # 如果训练所有数据取消掉下面的注释\n",
+    "        #---------------------------------------------------\n",
+    "        trainset = train_cf.build_full_trainset()\n",
+    "        #---------------------------------------------------\n",
+    "    else:\n",
+    "        # 从已有得df中加载数据\n",
+    "        train_cf = Dataset.load_from_df(train, reader=reader)\n",
+    "\n",
+    "    # 如果训练所有数据取消掉下面的注释\n",
+    "    #---------------------------------------------------\n",
+    "    algo = SVD(n_epochs=350, lr_all=0.003, reg_all=0.01, n_factors=250)\n",
+    "    print('fit begin')\n",
+    "    fit_time_begin = time.perf_counter()\n",
+    "\n",
+    "    algo.fit(trainset)\n",
+    "\n",
+    "    fit_time_end = time.perf_counter()\n",
+    "    print('fit end')\n",
+    "    print('Running time: %s Seconds' % (fit_time_end - fit_time_begin))\n",
+    "\n",
+    "    end = time.perf_counter()\n",
+    "    print('Running time: %s Seconds' % (end - begin))\n",
+    "    return algo\n",
+    "\n",
+    "algo2 = svd2(input_csv=True)\n",
+    "# 保存模型\n",
+    "dump('svd-350-2.model', algo=algo2, verbose=1)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "colab_type": "text",
+    "id": "0XHhz9hPwB9N"
+   },
+   "source": [
+    "## 特征工程部分\n",
+    "<hr>"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "colab_type": "text",
+    "id": "Wm6zWDJaw-Uq"
+   },
+   "source": [
+    "### item属性的特征构建，特征选择与特征提取\n",
+    "<hr>"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "39kvpK2VuMET"
+   },
+   "outputs": [],
+   "source": [
+    "from pycaret.regression import *\n",
+    "reg1 = setup(data = train, target='score',feature_interaction=True, feature_ratio=True, polynomial_features=True, train_size=0.8,feature_selection=True, feature_selection_threshold=0.6)\n",
+    "  # 所有的数据\n",
+    "total = reg1[0]"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "colab_type": "text",
+    "id": "XKiw6fMwxEYU"
+   },
+   "source": [
+    "### 对score做对数变化\n",
+    "<hr>"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/",
+     "height": 200
+    },
+    "colab_type": "code",
+    "id": "IiqHMrT3uGwn",
+    "outputId": "1a5d21ca-c26b-4bcb-affa-bdd2847c5859"
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>user</th>\n",
+       "      <th>ID</th>\n",
+       "      <th>score</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>0</td>\n",
+       "      <td>507696</td>\n",
+       "      <td>90</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>0</td>\n",
+       "      <td>137915</td>\n",
+       "      <td>90</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2</th>\n",
+       "      <td>0</td>\n",
+       "      <td>120328</td>\n",
+       "      <td>90</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>3</th>\n",
+       "      <td>0</td>\n",
+       "      <td>123025</td>\n",
+       "      <td>90</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>4</th>\n",
+       "      <td>0</td>\n",
+       "      <td>131263</td>\n",
+       "      <td>90</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "   user      ID  score\n",
+       "0     0  507696     90\n",
+       "1     0  137915     90\n",
+       "2     0  120328     90\n",
+       "3     0  123025     90\n",
+       "4     0  131263     90"
+      ]
+     },
+     "execution_count": 70,
+     "metadata": {
+      "tags": []
+     },
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "import pandas as pd\n",
+    "import numpy as np\n",
+    "# 训练集scale log\n",
+    "train = pd.read_csv('trainset.csv')\n",
+    "# 第三步：对收入的数据进行log变化\n",
+    "train['new_score'] = np.log(train['score'].values+1)\n",
+    "# 去掉score这一列\n",
+    "train.drop('score',inplace=True,axis=1)\n",
+    "train.set_index('user', inplace=True)\n",
+    "train.to_csv('new_score_trainset.csv')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "Gf9Ej-InNw2g"
+   },
+   "outputs": [],
+   "source": [
+    "# 训练集scale log\n",
+    "test = pd.read_csv('testset.csv')\n",
+    "# 第三步：对收入的数据进行log变化\n",
+    "test['new_score'] = np.log(test['score'].values+1)\n",
+    "# 去掉score这一列\n",
+    "test.drop('score',inplace=True,axis=1)\n",
+    "test.set_index('user', inplace=True)\n",
+    "test.to_csv('new_score_testset.csv')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "WFiWcMW1vsJP"
+   },
+   "outputs": [],
+   "source": [
+    "# 绘制score的分布图\n",
+    "train['score'].plot.hist(range=(0,100))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "cZxGgW5rvu6e"
+   },
+   "outputs": [],
+   "source": [
+    "# 第三步：对收入的数据进行log变化\n",
+    "train['new_score'] = np.log(train['score'].values+1)\n",
+    "print(train[['score', 'new_score']].head())"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "3KRqEDFMvzDU"
+   },
+   "outputs": [],
+   "source": [
+    "train.drop(['score'], axis=1,inplace=True)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "UXOq3U2nv205"
+   },
+   "outputs": [],
+   "source": [
+    "# 绘制new_score的分布图\n",
+    "train['new_score'].plot.hist(range=(0,100))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "colab_type": "text",
+    "id": "2vIrfr4G6qVC"
+   },
+   "source": [
+    "### 1-100 to 1-5"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/",
+     "height": 173
+    },
+    "colab_type": "code",
+    "id": "VHLoP61t6puZ",
+    "outputId": "92a0fdd7-6318-4cb1-84e4-85bfbd9583c1"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "               user            ID         score    score[1,5]\n",
+      "count  4.008915e+06  4.008915e+06  4.008915e+06  4.008915e+06\n",
+      "mean   9.605909e+03  3.105513e+05  4.960715e+01  3.130934e+00\n",
+      "std    5.714924e+03  1.795710e+05  3.821867e+01  1.699518e+00\n",
+      "min    0.000000e+00  1.000000e+00  0.000000e+00  1.000000e+00\n",
+      "25%    4.584000e+03  1.555220e+05  0.000000e+00  1.000000e+00\n",
+      "50%    9.440000e+03  3.065630e+05  5.000000e+01  3.000000e+00\n",
+      "75%    1.443300e+04  4.675300e+05  9.000000e+01  5.000000e+00\n",
+      "max    1.983400e+04  6.249600e+05  1.000000e+02  5.000000e+00\n"
+     ]
+    }
+   ],
+   "source": [
+    "def scale5(score):\n",
+    "  if 0 <= score < 20:\n",
+    "    return 1\n",
+    "  elif 20 <= score < 40:\n",
+    "    return 2\n",
+    "  elif 40 <= score < 60:\n",
+    "    return 3\n",
+    "  elif 60 <= score < 80:\n",
+    "    return 4\n",
+    "  elif 80 <= score <=100:\n",
+    "    return 5 \n",
+    "\n",
+    "import pandas as pd\n",
+    "import numpy as np\n",
+    "# 训练集scale 1- 10\n",
+    "train = pd.read_csv('trainset.csv')\n",
+    "train['score[1,5]'] = train['score'].apply(scale5)\n",
+    "print(train.describe())\n",
+    "# 去掉score这一列\n",
+    "train.drop('score',inplace=True,axis=1)\n",
+    "train.set_index('user', inplace=True)\n",
+    "train.to_csv('trainset_score[1,5].csv')\n",
+    "del train"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "gFlx1JHQO-Gc"
+   },
+   "outputs": [],
+   "source": [
+    "# 测试集scale 1- 5\n",
+    "test = pd.read_csv('testset.csv')\n",
+    "test['score[1,5]'] = test['score'].apply(scale5)\n",
+    "test.drop('score',inplace=True,axis=1)\n",
+    "test.set_index('user', inplace=True)\n",
+    "test.to_csv('testset_score[1,5].csv')\n",
+    "del test"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/",
+     "height": 173
+    },
+    "colab_type": "code",
+    "id": "CzoFrxTleeAu",
+    "outputId": "1dfc38bc-5cb5-4a8a-d92d-9af2d7b6cc97"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "               user            ID         score    score[1,5]\n",
+      "count  5.001507e+06  5.001507e+06  5.001507e+06  5.001507e+06\n",
+      "mean   9.605289e+03  3.110830e+05  4.954497e+01  3.127853e+00\n",
+      "std    5.714891e+03  1.794890e+05  3.822048e+01  1.699262e+00\n",
+      "min    0.000000e+00  0.000000e+00  0.000000e+00  1.000000e+00\n",
+      "25%    4.579000e+03  1.563420e+05  0.000000e+00  1.000000e+00\n",
+      "50%    9.440000e+03  3.073440e+05  5.000000e+01  3.000000e+00\n",
+      "75%    1.443300e+04  4.677770e+05  9.000000e+01  5.000000e+00\n",
+      "max    1.983400e+04  6.249600e+05  1.000000e+02  5.000000e+00\n"
+     ]
+    }
+   ],
+   "source": [
+    "# total train\n",
+    "def scale5(score):\n",
+    "  if 0 <= score < 20:\n",
+    "    return 1\n",
+    "  elif 20 <= score < 40:\n",
+    "    return 2\n",
+    "  elif 40 <= score < 60:\n",
+    "    return 3\n",
+    "  elif 60 <= score < 80:\n",
+    "    return 4\n",
+    "  elif 80 <= score <=100:\n",
+    "    return 5 \n",
+    "\n",
+    "import pandas as pd\n",
+    "import numpy as np\n",
+    "# 训练集scale 1- 10\n",
+    "train = pd.read_csv('train.csv')\n",
+    "train['score[1,5]'] = train['score'].apply(scale5)\n",
+    "print(train.describe())\n",
+    "# 去掉score这一列\n",
+    "train.drop('score',inplace=True,axis=1)\n",
+    "train.set_index('user', inplace=True)\n",
+    "train.to_csv('train_score[1,5].csv')\n",
+    "del train"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "colab_type": "text",
+    "id": "7TAK-OO6HlHu"
+   },
+   "source": [
+    "### 1-100 to 1-10\n",
+    "\n",
+    "\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "87Ayv9RCHnOL"
+   },
+   "outputs": [],
+   "source": [
+    "def scale10(score):\n",
+    "  if 0 <= score < 10:\n",
+    "    return 1\n",
+    "  elif 10 <= score < 20:\n",
+    "    return 2\n",
+    "  elif 20 <= score < 30:\n",
+    "    return 3\n",
+    "  elif 30 <= score < 40:\n",
+    "    return 4\n",
+    "  elif 40 <= score < 50:\n",
+    "    return 5 \n",
+    "  elif 50 <= score < 60:\n",
+    "    return 6\n",
+    "  elif 60 <= score < 70:\n",
+    "    return 7\n",
+    "  elif 70 <= score < 80:\n",
+    "    return 8\n",
+    "  elif 80 <= score < 90:\n",
+    "    return 9\n",
+    "  elif 90 <= score <= 100:\n",
+    "    return 10"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/",
+     "height": 177
+    },
+    "colab_type": "code",
+    "id": "e_FntrHlHsJd",
+    "outputId": "19ad6456-2736-491a-fb02-5b0a1f6148df"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "               user            ID         score   score[1,10]\n",
+      "count  4.008915e+06  4.008915e+06  4.008915e+06  4.008915e+06\n",
+      "mean   9.605909e+03  3.110291e+05  4.958683e+01  5.895525e+00\n",
+      "std    5.714924e+03  1.794639e+05  3.822136e+01  3.755823e+00\n",
+      "min    0.000000e+00  1.000000e+00  0.000000e+00  1.000000e+00\n",
+      "25%    4.584000e+03  1.564050e+05  0.000000e+00  1.000000e+00\n",
+      "50%    9.440000e+03  3.071970e+05  5.000000e+01  6.000000e+00\n",
+      "75%    1.443300e+04  4.677280e+05  9.000000e+01  1.000000e+01\n",
+      "max    1.983400e+04  6.249600e+05  1.000000e+02  1.000000e+01\n"
+     ]
+    }
+   ],
+   "source": [
+    "import pandas as pd\n",
+    "import numpy as np\n",
+    "train = pd.read_csv('trainset.csv')\n",
+    "train['score[1,10]'] = train['score'].apply(scale10)\n",
+    "print(train.describe())\n",
+    "# 去掉score这一列\n",
+    "train.drop('score',inplace=True,axis=1)\n",
+    "train.set_index('user', inplace=True)\n",
+    "train.to_csv('trainset_score[1,10].csv')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/",
+     "height": 177
+    },
+    "colab_type": "code",
+    "id": "iATFujG2Idxv",
+    "outputId": "c8ce911c-1898-419b-e337-48fd9aba61f7"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "                user             ID          score    score[1,10]\n",
+      "count  992592.000000  992592.000000  992592.000000  992592.000000\n",
+      "mean     9602.784316  311190.856990      49.351024       5.871779\n",
+      "std      5714.758330  179396.111154      38.225385       3.755712\n",
+      "min         0.000000       0.000000       0.000000       1.000000\n",
+      "25%      4573.000000  156521.750000       0.000000       1.000000\n",
+      "50%      9433.000000  307478.000000      50.000000       6.000000\n",
+      "75%     14433.000000  467666.500000      90.000000      10.000000\n",
+      "max     19834.000000  624955.000000     100.000000      10.000000\n"
+     ]
+    }
+   ],
+   "source": [
+    "test = pd.read_csv('testset.csv')\n",
+    "test['score[1,10]'] = test['score'].apply(scale10)\n",
+    "print(test.describe())\n",
+    "# 去掉score这一列\n",
+    "test.drop('score',inplace=True,axis=1)\n",
+    "test.set_index('user', inplace=True)\n",
+    "test.to_csv('testset_score[1,10].csv')"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "colab_type": "text",
+    "id": "iBzlTIljPOcp"
+   },
+   "source": [
+    "### 0-100 to 0-10"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "8G1QI6gHPUOj"
+   },
+   "outputs": [],
+   "source": [
+    "def scale0_10(score):\n",
+    "  if 0 < score < 10:\n",
+    "    return 1\n",
+    "  elif 10 <= score < 20:\n",
+    "    return 2\n",
+    "  elif 20 <= score < 30:\n",
+    "    return 3\n",
+    "  elif 30 <= score < 40:\n",
+    "    return 4\n",
+    "  elif 40 <= score < 50:\n",
+    "    return 5 \n",
+    "  elif 50 <= score < 60:\n",
+    "    return 6\n",
+    "  elif 60 <= score < 70:\n",
+    "    return 7\n",
+    "  elif 70 <= score < 80:\n",
+    "    return 8\n",
+    "  elif 80 <= score < 90:\n",
+    "    return 9\n",
+    "  elif 90 <= score <= 100:\n",
+    "    return 10\n",
+    "  elif score == 0:\n",
+    "    return 0"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/",
+     "height": 177
+    },
+    "colab_type": "code",
+    "id": "463GjkwDPgOK",
+    "outputId": "721c15d5-e4b5-45e3-bf4c-81b4610f543d"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "               user            ID         score   score[0,10]\n",
+      "count  4.008915e+06  4.008915e+06  4.008915e+06  4.008915e+06\n",
+      "mean   9.605909e+03  3.110291e+05  4.958683e+01  5.895525e+00\n",
+      "std    5.714924e+03  1.794639e+05  3.822136e+01  3.755823e+00\n",
+      "min    0.000000e+00  1.000000e+00  0.000000e+00  1.000000e+00\n",
+      "25%    4.584000e+03  1.564050e+05  0.000000e+00  1.000000e+00\n",
+      "50%    9.440000e+03  3.071970e+05  5.000000e+01  6.000000e+00\n",
+      "75%    1.443300e+04  4.677280e+05  9.000000e+01  1.000000e+01\n",
+      "max    1.983400e+04  6.249600e+05  1.000000e+02  1.000000e+01\n"
+     ]
+    }
+   ],
+   "source": [
+    "import pandas as pd\n",
+    "import numpy as np\n",
+    "train = pd.read_csv('trainset.csv')\n",
+    "train['score[0,10]'] = train['score'].apply(scale10)\n",
+    "print(train.describe())\n",
+    "# 去掉score这一列\n",
+    "train.drop('score',inplace=True,axis=1)\n",
+    "train.set_index('user', inplace=True)\n",
+    "train.to_csv('trainset_score[0,10].csv')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/",
+     "height": 177
+    },
+    "colab_type": "code",
+    "id": "fs6Z3bp9Pm9k",
+    "outputId": "7350dd78-3abb-46e6-9dbd-3c72b93f47b6"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "                user             ID          score    score[0,10]\n",
+      "count  992592.000000  992592.000000  992592.000000  992592.000000\n",
+      "mean     9602.784316  311190.856990      49.351024       5.871779\n",
+      "std      5714.758330  179396.111154      38.225385       3.755712\n",
+      "min         0.000000       0.000000       0.000000       1.000000\n",
+      "25%      4573.000000  156521.750000       0.000000       1.000000\n",
+      "50%      9433.000000  307478.000000      50.000000       6.000000\n",
+      "75%     14433.000000  467666.500000      90.000000      10.000000\n",
+      "max     19834.000000  624955.000000     100.000000      10.000000\n"
+     ]
+    }
+   ],
+   "source": [
+    "test = pd.read_csv('testset.csv')\n",
+    "test['score[0,10]'] = test['score'].apply(scale10)\n",
+    "print(test.describe())\n",
+    "# 去掉score这一列\n",
+    "test.drop('score',inplace=True,axis=1)\n",
+    "test.set_index('user', inplace=True)\n",
+    "test.to_csv('testset_score[0,10].csv')"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "colab_type": "text",
+    "id": "MyuRfbJM0qZl"
+   },
+   "source": [
+    "## EDA（探索性数据分析）\n",
+    "<hr>"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "-rh1lxEoksc5"
+   },
+   "outputs": [],
+   "source": [
+    "import pandas as pd\n",
+    "import numpy as np\n",
+    "import matplotlib.pyplot as plt"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "Kxp8kZwDk0AZ"
+   },
+   "outputs": [],
+   "source": [
+    "train = pd.read_csv('trainset.csv')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "4WIonaFendEo"
+   },
+   "outputs": [],
+   "source": [
+    "item_max = train['ID'].max()\n",
+    "user_max = train['user'].max()\n",
+    "length = len(train['user'])\n",
+    "# 计算矩阵的稀疏程度\n",
+    "sparsity = 1-length/(item_max*user_max)\n",
+    "print(sparsity)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {
+     "base_uri": "https://localhost:8080/",
+     "height": 139
+    },
+    "colab_type": "code",
+    "id": "SH9xtRU1tJq_",
+    "outputId": "856e0c33-87b2-4f0b-8a48-2ecb15fda06e"
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "                  0\n",
+      "score[1,5]         \n",
+      "5           1448238\n",
+      "1           1255993\n",
+      "4            485706\n",
+      "3            473685\n",
+      "2            345293\n"
+     ]
+    }
+   ],
+   "source": [
+    "train = pd.read_csv('trainset_score[1,5].csv')\n",
+    "score_num = train.groupby('score[1,5]').size()\n",
+    "score_num = score_num.reset_index()\n",
+    "score_num.sort_values(0 ,inplace=True, ascending=False)\n",
+    "score_num.set_index('score[1,5]', inplace=True)\n",
+    "print(score_num)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "colab_type": "text",
+    "id": "Chl15MMaxgaM"
+   },
+   "source": [
+    "## ML\n",
+    "<hr>"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "qtklpZ0godjC"
+   },
+   "outputs": [],
+   "source": [
+    "# 安装pycaret包\n",
+    "!pip install pycaret"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "BDAYnpZLoCma"
+   },
+   "outputs": [],
+   "source": [
+    "# 当前的路径\n",
+    "import os\n",
+    "os.chdir(\"/content/drive/My Drive/recommention\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "ZdcFSs0soFWt"
+   },
+   "outputs": [],
+   "source": [
+    "import pandas as pd\n",
+    "import numpy as np\n",
+    "new_train = pd.read_csv('new_score_trainset_plus.csv')\n",
+    "new_train['attribute1/attribute2'] = new_train['attribute1']/new_train['attribute2']\n",
+    "new_train['attribute1+attribute2'] = new_train['attribute1']+new_train['attribute2']\n",
+    "new_train['attribute1_power2'] = np.power(new_train['attribute1'],2)\n",
+    "new_train['attribute2_power2'] = np.power(new_train['attribute2'],2)\n",
+    "new_train['attribute1_power2+attribute2'] = np.power(new_train['attribute1'],2) + new_train['attribute2']\n",
+    "new_train['attribute2_power2+attribute1'] = np.power(new_train['attribute2'],2) + new_train['attribute1']"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "u24cuYXGoHKF"
+   },
+   "outputs": [],
+   "source": [
+    "# import regression module\n",
+    "from pycaret.regression import *\n",
+    "# intialize the setup\n",
+    "reg1 = setup(data = new_train, target='new_score', train_size=0.8)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "1tESETebx3bO"
+   },
+   "outputs": [],
+   "source": [
+    "# lightgbm\n",
+    "lightgbm = create_model('lightgbm', fold=2) \n",
+    "# xgboost\n",
+    "xgboost = create_model('xgboost',fold=2)\n",
+    "# K Neighbors Regressor\n",
+    "knn = create_model('knn',fold=2)\n",
+    "# Ridge Regression\n",
+    "ridge = create_model('ridge',fold=2)\n",
+    "# creating multiple layer stacking from specific models\n",
+    "stacknet = create_stacknet([[lightgbm, knn], [ridge, xgboost]], fold=2)\n",
+    "#save trained model\n",
+    "save_model(stacknet, 'ml')\n",
+    "\n",
+    "new_test = pd.read_csv('new_score_testset_plus.csv')\n",
+    "new_test['attribute1/attribute2'] = new_test['attribute1']/new_test['attribute2']\n",
+    "new_test['attribute1+attribute2'] = new_test['attribute1']+new_test['attribute2']\n",
+    "new_test['attribute1_power2'] = np.power(new_test['attribute1'],2)\n",
+    "new_test['attribute2_power2'] = np.power(new_test['attribute2'],2)\n",
+    "new_test['attribute1_power2+attribute2'] = np.power(new_test['attribute1'],2) + new_test['attribute2']\n",
+    "new_test['attribute2_power2+attribute1'] = np.power(new_test['attribute2'],2) + new_test['attribute1']\n",
+    "test_score = new_test['new_score'].tolist()\n",
+    "new_test.drop('new_score',axis=1, inplace=True)\n",
+    "\n",
+    "print(new_test.head())\n",
+    "# generate predictions on unseen data\n",
+    "pred = predict_model(stacknet, data = new_test)\n",
+    "# 从log转到原来的数据\n",
+    "pred_score = np.ceil(np.exp(pred['Label'].tolist())+1)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "x84ghS1NoXMl"
+   },
+   "outputs": [],
+   "source": [
+    "temp_test = pd.read_csv('testset.csv')\n",
+    "test_score = temp_test['score'].tolist()\n",
+    "del temp_test"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "ykvV1w8WoSHR"
+   },
+   "outputs": [],
+   "source": [
+    "from sklearn.metrics import mean_squared_error\n",
+    "# 计算rmse\n",
+    "rmse = np.sqrt(mean_squared_error(test_score,pred_score))\n",
+    "rmse"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "colab_type": "text",
+    "id": "Et5hS7S1owgB"
+   },
+   "source": [
+    "## 生成test 结果"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "YJ5boFS5orCq"
+   },
+   "outputs": [],
+   "source": [
+    "# 加载test文件\n",
+    "def load_test_data(filepath, output_csv=False):\n",
+    "    print('begin load test data ')\n",
+    "    # 打开文件\n",
+    "    with open(filepath, 'r') as f:\n",
+    "        test = []\n",
+    "        while True:\n",
+    "            line = f.readline()\n",
+    "            if not line or line == '\\n':\n",
+    "                break\n",
+    "\n",
+    "            id, item_num = line.split('|')\n",
+    "            # 类型转化\n",
+    "            id = int(id)\n",
+    "            item_num = int(item_num)\n",
+    "\n",
+    "            # 遍历之后的内容\n",
+    "            for i in range(item_num):\n",
+    "                line = f.readline()\n",
+    "                item_id = line\n",
+    "                # 数据类型转化\n",
+    "                item_id = int(item_id)\n",
+    "                # 放入test中\n",
+    "                test.append([id, item_id, 0])\n",
+    "    # 转为df类型\n",
+    "    test = pd.DataFrame(data=test, columns=['user', 'ID', 'score'])\n",
+    "    test.set_index('user', inplace=True)\n",
+    "\n",
+    "    if output_csv is True:\n",
+    "        test.to_csv(FILE_PATH+'test.csv')\n",
+    "    print('load test data finish')\n",
+    "    return test"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "exwk4nzMortj"
+   },
+   "outputs": [],
+   "source": [
+    "from sklearn.metrics import mean_squared_error\n",
+    "import pandas as pd\n",
+    "import numpy as np\n",
+    "from surprise.dump import dump, load\n",
+    "temp_pred,algo= load('svd-350-2.model')\n",
+    "del temp_pred\n",
+    "# 相当于swithch case 语句\n",
+    "def rescale1_5(score):\n",
+    "  switcher = {\n",
+    "      1: 10,\n",
+    "      2: 30,\n",
+    "      3: 50,\n",
+    "      4: 70,\n",
+    "      5: 90,\n",
+    "  }\n",
+    "  # 默认值为50\n",
+    "  return switcher.get(score,50)\n",
+    "  \n",
+    "test = pd.read_csv('test.csv')\n",
+    "# 遍历测试集进行预测\n",
+    "pred =[]\n",
+    "for row in test.itertuples():\n",
+    "  # 注意这里一定要 把 user ， item_id 转为str格式的\n",
+    "  pred.append(algo.predict(str(row[1]), str(row[2]), r_ui=row[3]).est)\n",
+    "del algo\n",
+    "# 四舍五入\n",
+    "pred_round = np.round(pred)\n",
+    "# 从1-5转到原来的数据\n",
+    "pred_score = []\n",
+    "for p in pred_round:\n",
+    "  # 先转化为int\n",
+    "  pred_score.append(rescale1_5(int(p)))\n",
+    "test['pred'] = pred_score\n",
+    "test.drop('score', axis=1, inplace=True)\n",
+    "test.set_index('user', inplace=True)\n",
+    "test.to_csv('submit2.csv')\n",
+    "print(test.head(10))\n",
+    "del test"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "zArFbLzDo6Gh"
+   },
+   "outputs": [],
+   "source": [
+    "test = pd.read_csv('submit2.csv')\n",
+    "# 写入text\n",
+    "with open(\"submit2.txt\",\"w\") as f:\n",
+    "  temp_user = 1\n",
+    "  for row in test.itertuples():\n",
+    "    if temp_user != row[1]:\n",
+    "      f.write(str(row[1])+'|6\\n')\n",
+    "      temp_user = row[1]\n",
+    "    f.write(str(row[2])+ \" \"+ str(row[3])+\"\\n\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "JiYsnX5Oo9wt"
+   },
+   "outputs": [],
+   "source": [
+    "temp_test = test.groupby('user').size()\n",
+    "# 发现测试集中每个用户只对6个item评分\n",
+    "temp_test.describe()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "colab": {},
+    "colab_type": "code",
+    "id": "qt8RtGoipCR8"
+   },
+   "outputs": [],
+   "source": [
+    "# 查看写入后的数据集\n",
+    "with open(\"submit2.txt\",\"r\") as f:\n",
+    "  result = f.read()\n",
+    "  print(result)"
+   ]
+  }
+ ],
+ "metadata": {
+  "colab": {
+   "collapsed_sections": [],
+   "name": "recommentition.ipynb",
+   "provenance": [],
+   "toc_visible": true
+  },
+  "kernelspec": {
+   "display_name": "DL",
+   "language": "python",
+   "name": "dl"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.7.7"
+  },
+  "nbTranslate": {
+   "displayLangs": [
+    "*"
+   ],
+   "hotkey": "alt-t",
+   "langInMainMenu": true,
+   "sourceLang": "en",
+   "targetLang": "cn",
+   "useGoogleTranslate": true
+  },
+  "toc": {
+   "base_numbering": 1,
+   "nav_menu": {},
+   "number_sections": true,
+   "sideBar": true,
+   "skip_h1_title": false,
+   "title_cell": "Table of Contents",
+   "title_sidebar": "Contents",
+   "toc_cell": false,
+   "toc_position": {
+    "height": "calc(100% - 180px)",
+    "left": "10px",
+    "top": "150px",
+    "width": "165px"
+   },
+   "toc_section_display": true,
+   "toc_window_display": true
+  },
+  "varInspector": {
+   "cols": {
+    "lenName": 16,
+    "lenType": 16,
+    "lenVar": 40
+   },
+   "kernels_config": {
+    "python": {
+     "delete_cmd_postfix": "",
+     "delete_cmd_prefix": "del ",
+     "library": "var_list.py",
+     "varRefreshCmd": "print(var_dic_list())"
+    },
+    "r": {
+     "delete_cmd_postfix": ") ",
+     "delete_cmd_prefix": "rm(",
+     "library": "var_list.r",
+     "varRefreshCmd": "cat(var_dic_list()) "
+    }
+   },
+   "types_to_exclude": [
+    "module",
+    "function",
+    "builtin_function_or_method",
+    "instance",
+    "_Feature"
+   ],
+   "window_display": false
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 1
+}
